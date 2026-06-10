@@ -1,0 +1,80 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#071416" />
+    <title>Phobia: Sector 7</title>
+  </head>
+  <body>
+    <canvas id="game"></canvas>
+    <div id="vignette"></div>
+    <div id="damage-flash"></div>
+
+    <main id="start-screen" class="screen visible">
+      <section class="panel start-panel">
+        <div class="eyebrow">AETHER LABS // INCIDENT 07</div>
+        <h1>PHOBIA</h1>
+        <p class="subtitle">Containment has failed.</p>
+        <button id="start-button" type="button">ENTER SECTOR 7</button>
+        <div class="controls">
+          <span><b>WASD</b> MOVE</span><span><b>MOUSE</b> LOOK</span>
+          <span><b>LMB</b> FIRE</span><span><b>R</b> RELOAD</span>
+          <span><b>SHIFT</b> SPRINT</span><span><b>SPACE</b> JUMP</span>
+          <span><b>E</b> INTERACT</span><span><b>ESC</b> PAUSE</span>
+        </div>
+      </section>
+    </main>
+
+    <main id="pause-screen" class="screen pause-screen">
+      <section class="panel pause-panel">
+        <div class="eyebrow">AETHER LABS // SIMULATION SUSPENDED</div>
+        <h2>PAUSED</h2>
+        <p>Sector telemetry is holding.</p>
+        <div class="graphics-setting">
+          <span>GRAPHICS</span>
+          <div id="quality-options" class="quality-options" role="group" aria-label="Graphics quality">
+            <button type="button" data-quality="auto">AUTO</button>
+            <button type="button" data-quality="low">LOW</button>
+            <button type="button" data-quality="medium">MEDIUM</button>
+            <button type="button" data-quality="high">HIGH</button>
+          </div>
+          <small id="quality-status">Adaptive quality</small>
+        </div>
+        <div class="pause-actions">
+          <button id="resume-button" type="button">RESUME SECTOR</button>
+          <button id="pause-restart-button" class="secondary-button" type="button">RESTART</button>
+        </div>
+        <div class="pause-hint">Press ESC to return to Sector 7</div>
+      </section>
+    </main>
+
+    <section id="hud" class="hidden" aria-label="Heads-up display">
+      <div id="objective"><span>OBJECTIVE</span><b>Reach the extraction lift</b></div>
+      <div id="crosshair"><i></i><i></i><i></i><i></i></div>
+      <div id="hitmarker">×</div>
+      <div class="hud-block health-block">
+        <span>VITALS</span><strong id="health">100</strong><small>HP</small>
+        <div class="meter"><i id="health-bar"></i></div>
+      </div>
+      <div class="hud-block ammo-block">
+        <span>VX-9 SIDEARM</span><strong id="ammo">12</strong><small id="reserve">/ 48</small>
+      </div>
+      <div id="prompt"></div>
+      <div id="message"></div>
+    </section>
+
+    <pre id="diagnostics" aria-hidden="true"></pre>
+
+    <main id="end-screen" class="screen">
+      <section class="panel end-panel">
+        <div id="end-eyebrow" class="eyebrow">SECTOR STATUS</div>
+        <h2 id="end-title">EXTRACTION SECURED</h2>
+        <p id="end-copy">Aether Labs has logged your survival.</p>
+        <button id="restart-button" type="button">RUN SECTOR AGAIN</button>
+      </section>
+    </main>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>

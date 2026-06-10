@@ -1,0 +1,348 @@
+import { PointLight } from "@babylonjs/core/Lights/pointLight";
+import type { Material } from "@babylonjs/core/Materials/material";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
+import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import "@babylonjs/core/Meshes/thinInstanceMesh";
+import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
+import { Scene } from "@babylonjs/core/scene";
+import type { EnemyVariant } from "../core/Enemy";
+import type { MaterialLibrary } from "../core/MaterialLibrary";
+
+export type PickupKind = "health" | "ammo";
+
+export interface Pickup {
+  kind: PickupKind;
+  mesh: Mesh;
+  active: boolean;
+  baseY: number;
+}
+
+interface EnemySpawn {
+  position: Vector3;
+  variant: EnemyVariant;
+}
+
+interface BatchEntry {
+  material: Material;
+  matrices: Matrix[];
+  pickable: boolean;
+}
+
+interface FacilityLight {
+  light: PointLight;
+  baseIntensity: number;
+  flicker: boolean;
+  index: number;
+}
+
+export class Sector7 {
+  readonly pickups: Pickup[] = [];
+  readonly enemySpawns: EnemySpawn[] = [
+    { position: new Vector3(2.8, 0, -22), variant: "infected" },
+    { position: new Vector3(-4.8, 0, -1), variant: "infected" },
+    { position: new Vector3(4.5, 0, 8), variant: "runner" },
+    { position: new Vector3(-4, 0, 33), variant: "infected" },
+    { position: new Vector3(4.8, 0, 44), variant: "runner" },
+    { position: new Vector3(0, 0, 61), variant: "infected" },
+  ];
+  readonly extractionConsole: Mesh;
+  private readonly batches = new Map<string, BatchEntry>();
+  private readonly facilityLights: FacilityLight[] = [];
+  private readonly activeLights = new Set<FacilityLight>();
+  private readonly slidingDoor: TransformNode;
+  private time = 0;
+  private lightUpdateTimer = 0;
+  private lightBudget = 4;
+
+  constructor(
+    private readonly scene: Scene,
+    private readonly materials: MaterialLibrary,
+  ) {
+    scene.clearColor = new Color4(0.012, 0.035, 0.038, 1);
+    scene.fogMode = Scene.FOGMODE_EXP2;
+    scene.fogDensity = 0.007;
+    scene.fogColor = new Color3(0.025, 0.08, 0.085);
+    scene.collisionsEnabled = true;
+
+    this.createShell();
+    this.createSecurityCheckpoint();
+    this.createMainLab();
+    this.createContainment();
+    this.extractionConsole = this.createExtraction();
+    this.createCeilingLights();
+    this.createBloodTrail();
+    this.flushBatches();
+
+    this.slidingDoor = new TransformNode("security bulkhead", scene);
+    const leftDoor = this.dynamicBox("bulkhead-left", new Vector3(4.2, 4.2, 0.38), new Vector3(-4.25, 2.05, -14), materials.dark, true);
+    const rightDoor = this.dynamicBox("bulkhead-right", new Vector3(4.2, 4.2, 0.38), new Vector3(4.25, 2.05, -14), materials.dark, true);
+    leftDoor.parent = this.slidingDoor;
+    rightDoor.parent = this.slidingDoor;
+
+    this.createPickup("ammo", new Vector3(-5.6, 0.35, -6));
+    this.createPickup("health", new Vector3(6, 0.3, 19));
+    this.createPickup("ammo", new Vector3(-5.7, 0.35, 40));
+    this.createPickup("health", new Vector3(5.8, 0.3, 54));
+    this.materials.freeze();
+  }
+
+  update(delta: number, playerPosition: Vector3): void {
+    this.time += delta;
+    this.lightUpdateTimer -= delta;
+    if (this.lightUpdateTimer <= 0) {
+      this.lightUpdateTimer = 0.2;
+      this.updateLightBudget(playerPosition);
+    }
+    this.activeLights.forEach((entry) => {
+      const pulse = !entry.flicker || Math.sin(this.time * (13 + entry.index * 0.37)) > -0.78;
+      entry.light.intensity = pulse ? entry.baseIntensity : 0.04;
+    });
+
+    const doorTarget = playerPosition.z > -25 ? 4.6 : 0;
+    this.slidingDoor.position.y += (doorTarget - this.slidingDoor.position.y) * Math.min(1, delta * 2.2);
+
+    this.pickups.forEach((pickup, index) => {
+      if (!pickup.active) return;
+      pickup.mesh.rotation.y += delta * 1.4;
+      pickup.mesh.position.y = pickup.baseY + Math.sin(this.time * 2.4 + index) * 0.035;
+    });
+  }
+
+  setLightBudget(count: number): void {
+    this.lightBudget = count;
+    this.lightUpdateTimer = 0;
+  }
+
+  getActiveLightCount(): number {
+    return this.activeLights.size;
+  }
+
+  private createShell(): void {
+    this.batchBox("floor", new Vector3(18, 0.25, 122), new Vector3(0, -0.13, 20), this.materials.floor, true);
+    this.batchBox("ceiling", new Vector3(18, 0.25, 122), new Vector3(0, 4.55, 20), this.materials.dark, true);
+    this.batchBox("west-wall", new Vector3(0.3, 4.7, 122), new Vector3(-9, 2.25, 20), this.materials.wall, true);
+    this.batchBox("east-wall", new Vector3(0.3, 4.7, 122), new Vector3(9, 2.25, 20), this.materials.wall, true);
+    this.batchBox("start-wall", new Vector3(18, 4.7, 0.3), new Vector3(0, 2.25, -41), this.materials.wall, true);
+    this.batchBox("end-wall", new Vector3(18, 4.7, 0.3), new Vector3(0, 2.25, 81), this.materials.wall, true);
+    this.collider("world floor", new Vector3(18, 0.25, 122), new Vector3(0, -0.13, 20), true);
+    this.collider("world ceiling", new Vector3(18, 0.25, 122), new Vector3(0, 4.55, 20), false);
+    this.collider("west collision", new Vector3(0.3, 4.7, 122), new Vector3(-9, 2.25, 20), true);
+    this.collider("east collision", new Vector3(0.3, 4.7, 122), new Vector3(9, 2.25, 20), true);
+    this.collider("start collision", new Vector3(18, 4.7, 0.3), new Vector3(0, 2.25, -41), true);
+    this.collider("end collision", new Vector3(18, 4.7, 0.3), new Vector3(0, 2.25, 81), true);
+
+    for (let z = -39; z < 80; z += 4) this.batchBox("floor-seams", new Vector3(17.7, 0.015, 0.025), new Vector3(0, 0.01, z), this.materials.dark);
+    for (let z = -38; z < 80; z += 6) {
+      this.batchBox("wall-ribs", new Vector3(0.16, 4.4, 0.22), new Vector3(-8.78, 2.25, z), this.materials.dark);
+      this.batchBox("wall-ribs", new Vector3(0.16, 4.4, 0.22), new Vector3(8.78, 2.25, z), this.materials.dark);
+    }
+  }
+
+  private createSecurityCheckpoint(): void {
+    this.batchBox("security-desk", new Vector3(6.8, 1.05, 1.25), new Vector3(-3.4, 0.52, -30), this.materials.steel, true);
+    this.batchBox("security-desk", new Vector3(6.2, 0.18, 1.32), new Vector3(-3.4, 1.02, -30), this.materials.dark);
+    this.collider("security desk collision", new Vector3(6.8, 1.05, 1.25), new Vector3(-3.4, 0.52, -30), true);
+    this.monitor(new Vector3(-4.6, 1.62, -29.85), this.materials.cyan, -0.05);
+    this.monitor(new Vector3(-2.7, 1.62, -29.85), this.materials.cyan, 0.06);
+    this.batchBox("security-window", new Vector3(7.2, 2.2, 0.14), new Vector3(4.7, 2.3, -35.5), this.materials.wall);
+    this.batchBox("signs", new Vector3(3.6, 0.42, 0.05), new Vector3(0, 3.7, -40.78), this.materials.cyan);
+    this.hazardLine(-14.25);
+  }
+
+  private createMainLab(): void {
+    for (const z of [-7, 3, 13]) this.labBench(new Vector3(0, 0, z), z === 3 ? this.materials.green : this.materials.cyan);
+    for (const x of [-6.8, 6.8]) {
+      for (const z of [-8, 0, 8, 16]) {
+        this.batchBox("cabinets", new Vector3(2.8, 2.2, 0.58), new Vector3(x, 1.45, z), this.materials.wall);
+        this.batchBox("cabinet-glass", new Vector3(2.3, 1.55, 0.05), new Vector3(x + (x < 0 ? 0.31 : -0.31), 1.55, z + (x < 0 ? 0.31 : -0.31)), this.materials.glass);
+      }
+      this.collider(`cabinet collision ${x}`, new Vector3(2.9, 2.2, 25), new Vector3(x, 1.45, 4), true);
+    }
+    this.robotArm(new Vector3(-2.4, 1.2, 4.2));
+    this.robotArm(new Vector3(2.6, 1.2, 13.4));
+    this.batchBox("signs", new Vector3(0.05, 0.44, 4.3), new Vector3(-8.78, 3.55, 18), this.materials.cyan);
+  }
+
+  private createContainment(): void {
+    this.hazardLine(24.5);
+    for (const x of [-5.6, 0, 5.6]) {
+      this.batchBox("pod-base", new Vector3(2.5, 0.4, 2.6), new Vector3(x, 0.2, 31), this.materials.dark);
+      const pod = CreateCylinder("containment pod", { height: 3.2, diameter: 1.9, tessellation: 16 }, this.scene);
+      pod.position.set(x, 1.85, 31);
+      pod.material = this.materials.glass;
+      pod.isPickable = false;
+      pod.freezeWorldMatrix();
+      this.batchBox("pod-cap", new Vector3(2.1, 0.25, 2.1), new Vector3(x, 3.5, 31), this.materials.steel);
+      this.batchBox("pod-light", new Vector3(1.4, 0.05, 1.4), new Vector3(x, 3.36, 31), this.materials.green);
+      this.collider(`pod collision ${x}`, new Vector3(2.1, 3.6, 2.1), new Vector3(x, 1.8, 31), true);
+    }
+    this.labBench(new Vector3(-3.5, 0, 42), this.materials.green);
+    this.labBench(new Vector3(3.5, 0, 47), this.materials.green);
+    this.batchBox("rubble", new Vector3(2.8, 0.45, 1.3), new Vector3(-6.7, 0.28, 50), this.materials.wall, false, 0, 0, 0.34);
+    this.batchBox("rubble", new Vector3(2.4, 0.22, 3.2), new Vector3(5.8, 0.22, 52), this.materials.wall, false, 0, 0.58, 0);
+  }
+
+  private createExtraction(): Mesh {
+    this.hazardLine(57.5);
+    this.batchBox("lift", new Vector3(12, 4.4, 0.5), new Vector3(0, 2.2, 76), this.materials.dark, true);
+    this.batchBox("lift", new Vector3(7.5, 3.8, 0.28), new Vector3(0, 1.9, 75.7), this.materials.wall, true);
+    this.collider("lift collision", new Vector3(12, 4.4, 0.5), new Vector3(0, 2.2, 76), true);
+    this.batchBox("signs", new Vector3(4, 0.35, 0.05), new Vector3(0, 4.05, 75.48), this.materials.cyan);
+    const console = this.dynamicBox("extraction console", new Vector3(1.3, 1.4, 0.7), new Vector3(5.6, 0.72, 72.4), this.materials.steel, true);
+    console.metadata = { extraction: true };
+    console.isPickable = true;
+    this.batchBox("screens", new Vector3(0.9, 0.55, 0.04), new Vector3(5.6, 1.05, 72.02), this.materials.cyan, false, -0.2);
+    return console;
+  }
+
+  private createCeilingLights(): void {
+    for (let z = -36; z < 76; z += 8) {
+      for (const x of [-4.8, 4.8]) {
+        this.batchBox("light-housing", new Vector3(3.1, 0.12, 0.78), new Vector3(x, 4.38, z), this.materials.dark);
+        this.batchBox("fluorescent", new Vector3(2.7, 0.05, 0.5), new Vector3(x, 4.3, z), this.materials.lamp);
+        this.addFacilityLight(new Vector3(x, 3.9, z), new Color3(0.45, 0.8, 0.78), 1.05, 10, (z + x) % 3 < 1);
+      }
+    }
+    for (const z of [28, 48, 62]) {
+      this.addFacilityLight(new Vector3(0, 3.8, z), new Color3(1, 0.02, 0.01), 0.38, 9, true);
+      this.batchBox("alarm-beacon", new Vector3(0.32, 0.28, 0.32), new Vector3(0, 4.15, z), this.materials.red);
+    }
+  }
+
+  private createBloodTrail(): void {
+    const matrices: Matrix[] = [];
+    for (let index = 0; index < 15; index += 1) {
+      const radius = 0.18 + Math.random() * 0.34;
+      matrices.push(Matrix.Compose(new Vector3(radius * 1.8, radius, radius), Quaternion.RotationYawPitchRoll(0, Math.PI / 2, 0), new Vector3(Math.sin(index * 1.8) * 1.2, 0.012, 17 + index * 2.5)));
+    }
+    const stain = CreateDisc("blood-smears", { radius: 1, tessellation: 10 }, this.scene);
+    stain.material = this.materials.blood;
+    stain.isPickable = false;
+    this.setThinMatrices(stain, matrices);
+  }
+
+  private labBench(position: Vector3, screen: Material): void {
+    this.batchBox("lab-benches", new Vector3(5.8, 0.22, 2.2), position.add(new Vector3(0, 1.05, 0)), this.materials.steel);
+    for (const x of [-2.5, 2.5]) this.batchBox("bench-legs", new Vector3(0.18, 1, 1.8), position.add(new Vector3(x, 0.5, 0)), this.materials.dark);
+    this.collider(`bench collision ${position.z}`, new Vector3(5.8, 1.05, 2.2), position.add(new Vector3(0, 0.52, 0)), true);
+    this.monitor(position.add(new Vector3(-1.35, 1.56, 0)), screen, -0.12);
+    this.batchBox("analyzers", new Vector3(1.25, 0.55, 0.82), position.add(new Vector3(1.1, 1.42, 0.1)), this.materials.dark);
+    for (const x of [-1.9, 1.9]) {
+      this.batchBox("sample-vials", new Vector3(0.34, 0.62, 0.34), position.add(new Vector3(x, 1.46, -0.4)), screen);
+    }
+  }
+
+  private robotArm(position: Vector3): void {
+    this.batchBox("robot-arms", new Vector3(0.82, 0.28, 0.82), position, this.materials.dark);
+    this.batchBox("robot-arms", new Vector3(0.34, 1.45, 0.38), position.add(new Vector3(0, 0.78, 0)), this.materials.steel, false, 0, 0, -0.55);
+    this.batchBox("robot-arms", new Vector3(0.32, 1.25, 0.34), position.add(new Vector3(0.6, 1.68, 0)), this.materials.steel, false, 0, 0, 0.75);
+  }
+
+  private monitor(position: Vector3, screen: Material, rotationY: number): void {
+    this.batchBox("monitors", new Vector3(1.35, 0.9, 0.18), position, this.materials.dark, false, 0, rotationY);
+    this.batchBox("screens", new Vector3(1.08, 0.64, 0.025), position.add(new Vector3(0, 0, -0.105)), screen, false, 0, rotationY);
+  }
+
+  private createPickup(kind: PickupKind, position: Vector3): void {
+    const mesh = this.dynamicBox(
+      kind,
+      kind === "health" ? new Vector3(0.65, 0.38, 0.65) : new Vector3(0.75, 0.45, 0.48),
+      position,
+      kind === "health" ? this.materials.medkit : this.materials.ammo,
+    );
+    mesh.metadata = { pickup: kind };
+    mesh.isPickable = false;
+    this.pickups.push({ kind, mesh, active: true, baseY: position.y });
+  }
+
+  private hazardLine(z: number): void {
+    for (let x = -8.5; x < 8.5; x += 1) {
+      this.batchBox("hazard", new Vector3(0.74, 0.025, 0.7), new Vector3(x + 0.5, 0.015, z), Math.round(x) % 2 === 0 ? this.materials.hazardYellow : this.materials.hazardBlack, false, 0, 0.55);
+    }
+  }
+
+  private batchBox(
+    _name: string,
+    size: Vector3,
+    position: Vector3,
+    material: Material,
+    pickable = false,
+    rotationX = 0,
+    rotationY = 0,
+    rotationZ = 0,
+  ): void {
+    const zone = position.z < -14 ? "security" : position.z < 24 ? "lab" : position.z < 57 ? "containment" : "extraction";
+    const key = `${zone}:${material.uniqueId}:${pickable}`;
+    let entry = this.batches.get(key);
+    if (!entry) {
+      entry = { material, matrices: [], pickable };
+      this.batches.set(key, entry);
+    }
+    entry.matrices.push(Matrix.Compose(size, Quaternion.RotationYawPitchRoll(rotationY, rotationX, rotationZ), position));
+  }
+
+  private flushBatches(): void {
+    this.batches.forEach((entry, key) => {
+      const mesh = CreateBox(key, { size: 1 }, this.scene);
+      mesh.material = entry.material;
+      mesh.isPickable = entry.pickable;
+      mesh.freezeWorldMatrix();
+      this.setThinMatrices(mesh, entry.matrices);
+    });
+    this.batches.clear();
+  }
+
+  private setThinMatrices(mesh: Mesh, matrices: Matrix[]): void {
+    const buffer = new Float32Array(matrices.length * 16);
+    matrices.forEach((matrix, index) => matrix.copyToArray(buffer, index * 16));
+    mesh.thinInstanceSetBuffer("matrix", buffer, 16, true);
+    mesh.thinInstanceRefreshBoundingInfo(true);
+  }
+
+  private dynamicBox(name: string, size: Vector3, position: Vector3, material: Material, collision = false): Mesh {
+    const mesh = CreateBox(name, { width: size.x, height: size.y, depth: size.z }, this.scene);
+    mesh.position.copyFrom(position);
+    mesh.material = material;
+    mesh.checkCollisions = collision;
+    mesh.isPickable = collision;
+    return mesh;
+  }
+
+  private collider(name: string, size: Vector3, position: Vector3, pickable: boolean): void {
+    const mesh = CreateBox(name, { width: size.x, height: size.y, depth: size.z }, this.scene);
+    mesh.position.copyFrom(position);
+    mesh.checkCollisions = true;
+    mesh.isPickable = pickable;
+    mesh.visibility = 0;
+    mesh.metadata = { collision: true };
+    mesh.freezeWorldMatrix();
+  }
+
+  private addFacilityLight(position: Vector3, color: Color3, intensity: number, range: number, flicker: boolean): void {
+    const light = new PointLight("facility light", position, this.scene);
+    light.diffuse = color;
+    light.range = range;
+    light.intensity = 0;
+    light.setEnabled(false);
+    this.facilityLights.push({ light, baseIntensity: intensity, flicker, index: this.facilityLights.length });
+  }
+
+  private updateLightBudget(playerPosition: Vector3): void {
+    const nearest = [...this.facilityLights]
+      .sort((a, b) => Vector3.DistanceSquared(a.light.position, playerPosition) - Vector3.DistanceSquared(b.light.position, playerPosition))
+      .slice(0, this.lightBudget);
+    const next = new Set(nearest);
+    this.activeLights.forEach((entry) => {
+      if (next.has(entry)) return;
+      entry.light.intensity = 0;
+      entry.light.setEnabled(false);
+    });
+    nearest.forEach((entry) => entry.light.setEnabled(true));
+    this.activeLights.clear();
+    nearest.forEach((entry) => this.activeLights.add(entry));
+  }
+}
