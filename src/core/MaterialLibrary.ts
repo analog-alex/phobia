@@ -36,17 +36,17 @@ export class MaterialLibrary {
     const set = {
       uniform: this.pbr(
         `uniform-${variant}`,
-        variant === "runner" ? new Color3(0.18, 0.25, 0.2) : new Color3(0.16, 0.22, 0.23),
+        variant === "runner" ? new Color3(0.115, 0.16, 0.12) : new Color3(0.105, 0.14, 0.145),
         0.05,
-        0.86,
+        0.94,
       ),
       skin: this.pbr(
         `skin-${variant}`,
-        variant === "runner" ? new Color3(0.28, 0.16, 0.12) : new Color3(0.3, 0.35, 0.25),
+        variant === "runner" ? new Color3(0.31, 0.12, 0.075) : new Color3(0.25, 0.31, 0.19),
         0,
         1,
       ),
-      eye: this.pbr("infected eye", new Color3(0.5, 0.02, 0.01), 0, 0.6, new Color3(2.2, 0.04, 0.01)),
+      eye: this.pbr("infected tissue", new Color3(0.34, 0.008, 0.004), 0, 0.76, new Color3(1.15, 0.018, 0.008)),
     };
     this.enemySets.set(variant, set);
     return set;

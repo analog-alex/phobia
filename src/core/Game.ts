@@ -57,6 +57,7 @@ export class Game {
   private paused = false;
   private ended = false;
   private reloading = false;
+  private reloadTime = 0;
   private weaponKick = 0;
   private grounded = false;
   private verticalVelocity = 0;
@@ -251,8 +252,26 @@ export class Game {
     const moving = this.keys.has("KeyW") || this.keys.has("KeyA") || this.keys.has("KeyS") || this.keys.has("KeyD");
     const time = performance.now() * 0.008;
     const bob = moving ? Math.sin(time) * 0.012 : 0;
-    this.weapon.position.y = -0.37 + bob - this.weaponKick * 0.08;
-    this.weapon.rotation.x = -0.08 + this.weaponKick * 0.24;
+    let reloadPose = 0;
+    let magazineSnap = 0;
+    if (this.reloading) {
+      this.reloadTime = Math.min(0.82, this.reloadTime + delta);
+      const progress = this.reloadTime / 0.82;
+      if (progress < 0.32) reloadPose = this.smoothStep(progress / 0.32);
+      else if (progress < 0.68) {
+        reloadPose = 1;
+        magazineSnap = Math.sin(((progress - 0.32) / 0.36) * Math.PI);
+      } else reloadPose = 1 - this.smoothStep((progress - 0.68) / 0.32);
+
+      if (this.reloadTime >= 0.82) this.finishReload();
+    }
+
+    this.weapon.position.x = 0.42 + reloadPose * 0.16;
+    this.weapon.position.y = -0.37 + bob - this.weaponKick * 0.08 - reloadPose * 0.29 - magazineSnap * 0.055;
+    this.weapon.position.z = 0.95 - reloadPose * 0.08;
+    this.weapon.rotation.x = -0.08 + this.weaponKick * 0.24 + reloadPose * 0.46 - magazineSnap * 0.12;
+    this.weapon.rotation.y = -0.04 - reloadPose * 0.34;
+    this.weapon.rotation.z = 0.02 + reloadPose * 0.52 + magazineSnap * 0.09;
   }
 
   private updateMovement(delta: number): void {
@@ -369,16 +388,25 @@ export class Game {
   private reload(): void {
     if (this.reloading || this.ammo === 12 || this.reserve === 0) return;
     this.reloading = true;
+    this.reloadTime = 0;
+    this.weaponKick = 0;
     this.hud.flashMessage("Reloading", 800);
     this.audio.reload();
-    window.setTimeout(() => {
-      const needed = 12 - this.ammo;
-      const loaded = Math.min(needed, this.reserve);
-      this.ammo += loaded;
-      this.reserve -= loaded;
-      this.reloading = false;
-      this.hud.setAmmo(this.ammo, this.reserve);
-    }, 820);
+  }
+
+  private finishReload(): void {
+    const needed = 12 - this.ammo;
+    const loaded = Math.min(needed, this.reserve);
+    this.ammo += loaded;
+    this.reserve -= loaded;
+    this.reloading = false;
+    this.reloadTime = 0;
+    this.hud.setAmmo(this.ammo, this.reserve);
+  }
+
+  private smoothStep(value: number): number {
+    const clamped = Math.max(0, Math.min(1, value));
+    return clamped * clamped * (3 - 2 * clamped);
   }
 
   private jump(): void {
