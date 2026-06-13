@@ -8,7 +8,7 @@ import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
 import type { MaterialLibrary } from "./MaterialLibrary";
 
-export type EnemyVariant = "infected" | "runner";
+export type EnemyVariant = "infected" | "runner" | "acid";
 
 export class Enemy {
   readonly root: TransformNode;
@@ -25,6 +25,7 @@ export class Enemy {
   private attackAnimation = 0;
   private readonly gaitOffset = Math.random() * Math.PI * 2;
   private readonly twitchOffset = Math.random() * Math.PI * 2;
+  private readonly attackOrigin = new Vector3();
 
   constructor(
     scene: Scene,
@@ -63,13 +64,24 @@ export class Enemy {
       this.part(CreateSphere("facial lesion", { diameter: 0.11, segments: 6 }, scene), eye, new Vector3(0.16, 1.86, -0.37), Vector3.Zero(), new Vector3(1.1, 0.55, 0.35)),
       this.part(CreateBox("bloody mouth", { width: 0.21, height: 0.045, depth: 0.035 }, scene), eye, new Vector3(-0.01, 1.8, -0.455), new Vector3(0.08, 0, 0.08)),
     ]);
+    if (variant === "acid") {
+      this.mergeParts([
+        this.part(CreateSphere("acid throat", { diameter: 0.32, segments: 7 }, scene), eye, new Vector3(0, 1.62, -0.27), Vector3.Zero(), new Vector3(1.1, 1.25, 0.72)),
+        this.part(CreateSphere("acid sac", { diameter: 0.38, segments: 7 }, scene), eye, new Vector3(0.3, 1.32, 0.13), Vector3.Zero(), new Vector3(0.8, 1.35, 0.7)),
+      ]);
+    }
   }
 
   get isDead(): boolean {
     return this.dead;
   }
 
-  update(delta: number, playerPosition: Vector3, onAttack: (damage: number) => void): void {
+  update(
+    delta: number,
+    playerPosition: Vector3,
+    onAttack: (damage: number) => void,
+    onRangedAttack: (origin: Vector3) => void,
+  ): void {
     if (this.dead) {
       if (this.dying < 1) {
         this.dying = Math.min(1, this.dying + delta * 2.6);
@@ -90,7 +102,14 @@ export class Enemy {
       if (this.distance > 0) this.direction.set(this.offset.x / this.distance, 0, this.offset.z / this.distance);
     }
 
-    if (this.distance < 24 && this.distance > 1.45) {
+    const acidInRange = this.variant === "acid" && this.distance >= 4.5 && this.distance < 20;
+    if (acidInRange && this.attackCooldown === 0) {
+      this.attackCooldown = 2.15;
+      this.attackAnimation = 1;
+      this.root.rotation.y = Math.atan2(this.direction.x, this.direction.z) + Math.PI;
+      this.attackOrigin.set(this.root.position.x, this.root.position.y + 1.72, this.root.position.z);
+      onRangedAttack(this.attackOrigin);
+    } else if (this.distance < 24 && this.distance > 1.45 && !acidInRange) {
       const speed = this.variant === "runner" ? 2.5 : 1.45;
       this.root.position.x += this.direction.x * speed * delta;
       this.root.position.z += this.direction.z * speed * delta;
@@ -109,7 +128,7 @@ export class Enemy {
       const idleTwitch = Math.sin(this.animationTime * 0.72 + this.twitchOffset);
       this.visualRoot.rotation.z = idleTwitch * 0.035;
       this.visualRoot.rotation.y = idleTwitch * 0.025;
-      this.visualRoot.rotation.x = -this.attackAnimation * 0.28;
+      this.visualRoot.rotation.x = -this.attackAnimation * (this.variant === "acid" ? 0.48 : 0.28);
     }
   }
 
