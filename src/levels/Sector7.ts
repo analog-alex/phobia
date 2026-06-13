@@ -47,7 +47,7 @@ export class Sector7 {
     { position: new Vector3(4.5, 0, 8), variant: "runner" },
     { position: new Vector3(-4, 0, 33), variant: "infected" },
     { position: new Vector3(4.8, 0, 44), variant: "runner" },
-    { position: new Vector3(0, 0, 61), variant: "infected" },
+    { position: new Vector3(0, 0, 61), variant: "acid" },
   ];
   readonly extractionConsole: Mesh;
   private readonly batches = new Map<string, BatchEntry>();

@@ -38,6 +38,10 @@ export class AudioSystem {
     this.tone(72, 0.22, "sawtooth", 0.12, 48);
   }
 
+  acidThrow(): void {
+    this.tone(190, 0.18, "sawtooth", 0.08, 72);
+  }
+
   pickup(): void {
     this.tone(460, 0.06, "sine", 0.09, 680);
     window.setTimeout(() => this.tone(680, 0.08, "sine", 0.07, 900), 65);

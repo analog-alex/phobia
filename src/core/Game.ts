@@ -29,6 +29,16 @@ interface ImpactEntry {
   expiresAt: number;
 }
 
+interface AcidProjectile {
+  mesh: Mesh;
+  velocity: Vector3;
+  nextPosition: Vector3;
+  direction: Vector3;
+  ray: Ray;
+  active: boolean;
+  age: number;
+}
+
 export class Game {
   private readonly engine: Engine;
   private readonly scene: Scene;
@@ -40,6 +50,7 @@ export class Game {
   private readonly keys = new Set<string>();
   private readonly enemies: Enemy[] = [];
   private readonly impacts: ImpactEntry[] = [];
+  private readonly acidProjectiles: AcidProjectile[] = [];
   private readonly moveVector = new Vector3();
   private readonly groundRay = new Ray(Vector3.Zero(), Vector3.Down(), 2.03);
   private readonly pipeline: PostProcessRenderPipeline;
@@ -101,6 +112,7 @@ export class Game {
     });
     this.createWeapon();
     this.createImpactPool();
+    this.createAcidProjectilePool();
     this.bindEvents();
     this.hud.setHealth(this.health);
     this.hud.setAmmo(this.ammo, this.reserve);
@@ -242,6 +254,7 @@ export class Game {
     this.level.update(delta, this.camera.position);
     this.updateWeapon(delta);
     this.updateEnemies(delta);
+    this.updateAcidProjectiles(delta);
     this.updatePickups();
     this.updateExtractionPrompt();
   }
@@ -309,8 +322,67 @@ export class Game {
 
   private updateEnemies(delta: number): void {
     this.enemies.forEach((enemy) => {
-      enemy.update(delta, this.camera.position, (damage) => this.takeDamage(damage));
+      enemy.update(
+        delta,
+        this.camera.position,
+        (damage) => this.takeDamage(damage),
+        (origin) => this.throwAcid(origin),
+      );
     });
+  }
+
+  private throwAcid(origin: Vector3): void {
+    const projectile = this.acidProjectiles.find((entry) => !entry.active) ?? this.acidProjectiles[0];
+    const distance = Vector3.Distance(origin, this.camera.position);
+    const flightTime = Math.max(0.65, Math.min(1.3, distance / 12));
+    const gravity = 12;
+    projectile.mesh.position.copyFrom(origin);
+    projectile.velocity.set(
+      (this.camera.position.x - origin.x) / flightTime,
+      (this.camera.position.y - 0.35 - origin.y + 0.5 * gravity * flightTime * flightTime) / flightTime,
+      (this.camera.position.z - origin.z) / flightTime,
+    );
+    projectile.active = true;
+    projectile.age = 0;
+    projectile.mesh.setEnabled(true);
+    this.audio.acidThrow();
+  }
+
+  private updateAcidProjectiles(delta: number): void {
+    const gravity = 12;
+    this.acidProjectiles.forEach((projectile) => {
+      if (!projectile.active) return;
+      projectile.age += delta;
+      projectile.velocity.y -= gravity * delta;
+      projectile.nextPosition.copyFrom(projectile.velocity).scaleInPlace(delta).addInPlace(projectile.mesh.position);
+
+      const travel = Vector3.Distance(projectile.mesh.position, projectile.nextPosition);
+      projectile.nextPosition.subtractToRef(projectile.mesh.position, projectile.direction);
+      projectile.direction.normalize();
+      projectile.ray.origin.copyFrom(projectile.mesh.position);
+      projectile.ray.length = travel;
+      const hit = this.scene.pickWithRay(projectile.ray, (mesh) => Boolean(mesh.metadata?.collision));
+      const playerDistance = Vector3.Distance(projectile.nextPosition, this.camera.position);
+      if (hit?.hit && hit.pickedPoint) {
+        this.createImpact(hit.pickedPoint, false, true);
+        this.disableAcidProjectile(projectile);
+      } else if (playerDistance < 0.72) {
+        this.createImpact(projectile.nextPosition, false, true);
+        this.takeDamage(18);
+        this.disableAcidProjectile(projectile);
+      } else if (projectile.age >= 3) {
+        this.disableAcidProjectile(projectile);
+      } else {
+        projectile.mesh.position.copyFrom(projectile.nextPosition);
+        projectile.mesh.rotation.x += delta * 8;
+        projectile.mesh.rotation.z += delta * 11;
+      }
+    });
+  }
+
+  private disableAcidProjectile(projectile: AcidProjectile): void {
+    projectile.active = false;
+    projectile.mesh.setEnabled(false);
   }
 
   private updatePickups(): void {
@@ -472,10 +544,11 @@ export class Game {
     void this.canvas.requestPointerLock();
   }
 
-  private createImpact(position: Vector3, organic: boolean): void {
+  private createImpact(position: Vector3, organic: boolean, acid = false): void {
     const entry = this.impacts.find((impact) => !impact.mesh.isEnabled()) ?? this.impacts[0];
     entry.mesh.position.copyFrom(position);
-    entry.mesh.material = organic ? this.materials.organicImpact : this.materials.hardImpact;
+    entry.mesh.material = acid ? this.materials.acid : organic ? this.materials.organicImpact : this.materials.hardImpact;
+    entry.mesh.scaling.setAll(acid ? 3.2 : 1);
     entry.expiresAt = performance.now() + 1200;
     entry.mesh.setEnabled(true);
   }
@@ -498,6 +571,26 @@ export class Game {
       mesh.isPickable = false;
       mesh.setEnabled(false);
       this.impacts.push({ mesh, expiresAt: 0 });
+    }
+  }
+
+  private createAcidProjectilePool(): void {
+    for (let index = 0; index < 6; index += 1) {
+      const core = CreateSphere(`acid-projectile-${index}`, { diameter: 0.25, segments: 6 }, this.scene);
+      core.material = this.materials.acid;
+      core.scaling.set(0.8, 0.8, 1.65);
+      core.isPickable = false;
+      core.setEnabled(false);
+      const direction = new Vector3(0, 0, 1);
+      this.acidProjectiles.push({
+        mesh: core,
+        velocity: new Vector3(),
+        nextPosition: new Vector3(),
+        direction,
+        ray: new Ray(new Vector3(), direction, 0),
+        active: false,
+        age: 0,
+      });
     }
   }
 

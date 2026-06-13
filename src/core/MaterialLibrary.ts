@@ -23,6 +23,7 @@ export class MaterialLibrary {
   readonly grip = this.pbr("VX-9 grip", new Color3(0.06, 0.075, 0.075), 0.08, 0.92);
   readonly organicImpact = this.pbr("organic impact", new Color3(0.18, 0.01, 0.005), 0.05, 1, new Color3(0.35, 0.01, 0.005));
   readonly hardImpact = this.pbr("hard impact", new Color3(0.5, 0.36, 0.12), 0.05, 1, new Color3(0.8, 0.42, 0.05));
+  readonly acid = this.emissive("volatile acid", new Color3(1.4, 1.7, 0.02));
   private readonly enemySets = new Map<EnemyVariant, { uniform: PBRMaterial; skin: PBRMaterial; eye: PBRMaterial }>();
 
   constructor(private readonly scene: Scene) {
@@ -36,17 +37,27 @@ export class MaterialLibrary {
     const set = {
       uniform: this.pbr(
         `uniform-${variant}`,
-        variant === "runner" ? new Color3(0.115, 0.16, 0.12) : new Color3(0.105, 0.14, 0.145),
+        variant === "runner"
+          ? new Color3(0.115, 0.16, 0.12)
+          : variant === "acid"
+            ? new Color3(0.18, 0.2, 0.055)
+            : new Color3(0.105, 0.14, 0.145),
         0.05,
         0.94,
       ),
       skin: this.pbr(
         `skin-${variant}`,
-        variant === "runner" ? new Color3(0.31, 0.12, 0.075) : new Color3(0.25, 0.31, 0.19),
+        variant === "runner"
+          ? new Color3(0.31, 0.12, 0.075)
+          : variant === "acid"
+            ? new Color3(0.34, 0.42, 0.08)
+            : new Color3(0.25, 0.31, 0.19),
         0,
         1,
       ),
-      eye: this.pbr("infected tissue", new Color3(0.34, 0.008, 0.004), 0, 0.76, new Color3(1.15, 0.018, 0.008)),
+      eye: variant === "acid"
+        ? this.pbr("acid infected tissue", new Color3(0.6, 0.72, 0.01), 0, 0.6, new Color3(1.3, 1.55, 0.01))
+        : this.pbr("infected tissue", new Color3(0.34, 0.008, 0.004), 0, 0.76, new Color3(1.15, 0.018, 0.008)),
     };
     this.enemySets.set(variant, set);
     return set;
