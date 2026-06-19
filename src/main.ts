@@ -3,7 +3,8 @@ import "./style.css";
 const canvas = document.querySelector<HTMLCanvasElement>("#game");
 const startButton = document.querySelector<HTMLButtonElement>("#start-button");
 
-if (!canvas || !startButton) throw new Error("Game bootstrap elements were not found");
+if (!canvas || !startButton)
+  throw new Error("Game bootstrap elements were not found");
 
 let gameModulePromise: Promise<typeof import("./core/Game")> | undefined;
 const preloadGame = (): Promise<typeof import("./core/Game")> => {
@@ -11,7 +12,8 @@ const preloadGame = (): Promise<typeof import("./core/Game")> => {
   return gameModulePromise;
 };
 
-if (typeof window.requestIdleCallback === "function") window.requestIdleCallback(() => void preloadGame(), { timeout: 1800 });
+if (typeof window.requestIdleCallback === "function")
+  window.requestIdleCallback(() => void preloadGame(), { timeout: 1800 });
 else globalThis.setTimeout(() => void preloadGame(), 500);
 
 startButton.addEventListener("click", async () => {

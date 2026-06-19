@@ -29,7 +29,8 @@ export class HUD {
     this.lastHealth = safeValue;
     this.health.textContent = String(safeValue);
     this.healthBar.style.width = `${safeValue}%`;
-    this.healthBar.style.background = safeValue < 35 ? "var(--red)" : "var(--green)";
+    this.healthBar.style.background =
+      safeValue < 35 ? "var(--red)" : "var(--green)";
   }
 
   setAmmo(clip: number, reserve: number): void {
@@ -50,7 +51,10 @@ export class HUD {
     window.clearTimeout(this.messageTimer);
     this.message.textContent = value;
     this.message.classList.add("visible");
-    this.messageTimer = window.setTimeout(() => this.message.classList.remove("visible"), duration);
+    this.messageTimer = window.setTimeout(
+      () => this.message.classList.remove("visible"),
+      duration
+    );
   }
 
   showHit(): void {

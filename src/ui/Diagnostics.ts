@@ -15,7 +15,7 @@ export class Diagnostics {
     private readonly engine: Engine,
     private readonly scene: Scene,
     private readonly quality: QualityManager,
-    private readonly activeLights: () => number,
+    private readonly activeLights: () => number
   ) {
     const root = document.getElementById("diagnostics");
     if (!root) throw new Error("Missing diagnostics element");
@@ -38,8 +38,12 @@ export class Diagnostics {
     this.elapsed = 0;
 
     const sorted = [...this.frameTimes].sort((a, b) => a - b);
-    const average = this.frameTimes.reduce((sum, value) => sum + value, 0) / Math.max(1, this.frameTimes.length);
-    const p95 = sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ?? 0;
+    const average =
+      this.frameTimes.reduce((sum, value) => sum + value, 0) /
+      Math.max(1, this.frameTimes.length);
+    const p95 =
+      sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * 0.95))] ??
+      0;
     const scale = 1 / this.engine.getHardwareScalingLevel();
     this.root.textContent = [
       `FPS        ${this.engine.getFps().toFixed(0)}`,

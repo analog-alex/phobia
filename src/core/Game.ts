@@ -2,13 +2,9 @@ import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
 import "@babylonjs/core/Collisions/collisionCoordinator";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
-import { PointLight } from "@babylonjs/core/Lights/pointLight";
+
 import { Color3 } from "@babylonjs/core/Maths/math.color";
-import { Ray } from "@babylonjs/core/Culling/ray";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
-import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
-import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { BloomEffect } from "@babylonjs/core/PostProcesses/bloomEffect";
 import { ChromaticAberrationPostProcess } from "@babylonjs/core/PostProcesses/chromaticAberrationPostProcess";
 import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
@@ -16,76 +12,74 @@ import { PostProcessRenderEffect } from "@babylonjs/core/PostProcesses/RenderPip
 import { PostProcessRenderPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipeline";
 import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent";
 import { Scene } from "@babylonjs/core/scene";
-import { Enemy } from "./Enemy";
+import { COMBAT, LEVEL, PLAYER, WEAPON } from "../config/constants";
 import { Sector7 } from "../levels/Sector7";
 import { AudioSystem } from "../systems/AudioSystem";
-import { HUD } from "../ui/HUD";
+import { Effects } from "../systems/Effects";
+import {
+  QualityManager,
+  type QualityPreset,
+  type QualitySettings,
+  type QualityTier,
+} from "../systems/QualityManager";
+import { isEnemyMetadata } from "../types";
 import { Diagnostics } from "../ui/Diagnostics";
+import { HUD } from "../ui/HUD";
+import { Enemy } from "./Enemy";
 import { MaterialLibrary } from "./MaterialLibrary";
-import { QualityManager, type QualityPreset, type QualitySettings, type QualityTier } from "../systems/QualityManager";
-
-interface ImpactEntry {
-  mesh: Mesh;
-  expiresAt: number;
-}
-
-interface AcidProjectile {
-  mesh: Mesh;
-  velocity: Vector3;
-  nextPosition: Vector3;
-  direction: Vector3;
-  ray: Ray;
-  active: boolean;
-  age: number;
-}
+import { PlayerController } from "./PlayerController";
+import { WeaponSystem } from "./WeaponSystem";
 
 export class Game {
   private readonly engine: Engine;
   private readonly scene: Scene;
-  private readonly camera: UniversalCamera;
+  readonly camera: UniversalCamera;
   private readonly hud = new HUD();
   private readonly audio = new AudioSystem();
   private readonly materials: MaterialLibrary;
   private readonly quality: QualityManager;
   private readonly keys = new Set<string>();
   private readonly enemies: Enemy[] = [];
-  private readonly impacts: ImpactEntry[] = [];
-  private readonly acidProjectiles: AcidProjectile[] = [];
-  private readonly moveVector = new Vector3();
-  private readonly groundRay = new Ray(Vector3.Zero(), Vector3.Down(), 2.03);
   private readonly pipeline: PostProcessRenderPipeline;
   private readonly bloom: BloomEffect;
   private readonly fxaa: FxaaPostProcess;
   private readonly chromaticAberration: ChromaticAberrationPostProcess;
   private readonly diagnostics: Diagnostics;
+  private readonly player: PlayerController;
+  private readonly effects: Effects;
+  private readonly weaponSys: WeaponSystem;
+
   private level?: Sector7;
-  private weapon?: Mesh;
-  private muzzleLight?: PointLight;
-  private health = 100;
-  private ammo = 12;
-  private reserve = 48;
-  private started = false;
-  private paused = false;
-  private ended = false;
-  private reloading = false;
-  private reloadTime = 0;
-  private weaponKick = 0;
-  private grounded = false;
-  private verticalVelocity = 0;
-  private groundCheckTimer = 0;
+  private health: number = COMBAT.MAX_HEALTH;
   private kills = 0;
   private startTime = 0;
   private currentSettings: QualitySettings;
+  private started = false;
+  private paused = false;
+  private ended = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
-    this.engine = new Engine(canvas, true, { stencil: true, preserveDrawingBuffer: false });
+    this.engine = new Engine(canvas, true, {
+      stencil: true,
+      preserveDrawingBuffer: false,
+    });
     this.scene = new Scene(this.engine);
-    this.camera = new UniversalCamera("operative camera", new Vector3(0, 1.82, -36), this.scene);
     this.materials = new MaterialLibrary(this.scene);
-    this.pipeline = new PostProcessRenderPipeline(this.engine, "performance-pipeline");
+    this.pipeline = new PostProcessRenderPipeline(
+      this.engine,
+      "performance-pipeline"
+    );
     this.bloom = new BloomEffect(this.scene, 0.5, 0.18, 42);
     this.fxaa = new FxaaPostProcess("fxaa", 1, null, undefined, this.engine);
-    this.chromaticAberration = new ChromaticAberrationPostProcess("chromatic", 1280, 720, 1, null, undefined, this.engine);
+    this.chromaticAberration = new ChromaticAberrationPostProcess(
+      "chromatic",
+      1280,
+      720,
+      1,
+      null,
+      undefined,
+      this.engine
+    );
     this.currentSettings = {
       renderScale: 0.8,
       antialiasing: "fxaa",
@@ -94,28 +88,48 @@ export class Game {
       chromaticAberration: false,
       dynamicLights: 4,
     };
-    this.quality = new QualityManager((tier, settings) => this.applyQuality(tier, settings));
+    this.quality = new QualityManager((tier, settings) =>
+      this.applyQuality(tier, settings)
+    );
+    this.effects = new Effects(this.scene, this.materials);
+    const cam = new UniversalCamera(
+      "operative camera",
+      new Vector3(0, PLAYER.HEIGHT, -36),
+      this.scene
+    );
+    this.player = new PlayerController(cam, this.scene);
+    this.camera = this.player.camera;
+    this.weaponSys = new WeaponSystem(this.scene, this.materials, {
+      onReloadComplete: () =>
+        this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve()),
+    });
     this.diagnostics = new Diagnostics(
       this.engine,
       this.scene,
       this.quality,
-      () => (this.level?.getActiveLightCount() ?? 0) + ((this.muzzleLight?.intensity ?? 0) > 0 ? 1 : 0),
+      () =>
+        (this.level?.getActiveLightCount() ?? 0) +
+        ((this.weaponSys.getMuzzleLight()?.intensity ?? 0) > 0 ? 1 : 0)
     );
   }
 
   async initialize(): Promise<void> {
-    this.configureCamera();
+    // Camera configured inside PlayerController
+    this.player.attachControl(this.canvas);
+    this.scene.activeCamera = this.camera;
     this.configureLightingAndPostProcessing();
     this.level = new Sector7(this.scene, this.materials);
     this.level.enemySpawns.forEach(({ position, variant }) => {
-      this.enemies.push(new Enemy(this.scene, position, variant, this.materials));
+      this.enemies.push(
+        new Enemy(this.scene, position, variant, this.materials)
+      );
     });
-    this.createWeapon();
-    this.createImpactPool();
-    this.createAcidProjectilePool();
+    this.weaponSys.create(this.camera);
+    this.effects.createImpactPool();
+    this.effects.createAcidProjectilePool();
     this.bindEvents();
     this.hud.setHealth(this.health);
-    this.hud.setAmmo(this.ammo, this.reserve);
+    this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
 
     this.quality.initialize();
     this.updateQualityButtons();
@@ -128,22 +142,12 @@ export class Game {
     window.addEventListener("resize", () => this.engine.resize());
   }
 
-  private configureCamera(): void {
-    this.camera.minZ = 0.05;
-    this.camera.fov = 1.05;
-    this.camera.inertia = 0;
-    this.camera.angularSensibility = 1900;
-    this.camera.checkCollisions = true;
-    this.camera.applyGravity = false;
-    this.camera.ellipsoid = new Vector3(0.42, 0.88, 0.42);
-    this.camera.ellipsoidOffset = new Vector3(0, -0.88, 0);
-    this.camera.attachControl(this.canvas, true);
-    this.camera.inputs.removeByType("FreeCameraKeyboardMoveInput");
-    this.scene.activeCamera = this.camera;
-  }
-
   private configureLightingAndPostProcessing(): void {
-    const ambient = new HemisphericLight("ambient spill", new Vector3(0, 1, 0), this.scene);
+    const ambient = new HemisphericLight(
+      "ambient spill",
+      new Vector3(0, 1, 0),
+      this.scene
+    );
     ambient.diffuse = new Color3(0.3, 0.5, 0.48);
     ambient.groundColor = new Color3(0.045, 0.075, 0.08);
     ambient.intensity = 0.48;
@@ -153,38 +157,22 @@ export class Game {
     this.bloom.threshold = 0.72;
     this.chromaticAberration.aberrationAmount = 5;
     this.pipeline.addEffect(this.bloom);
-    this.pipeline.addEffect(new PostProcessRenderEffect(this.engine, "fxaa", () => this.fxaa));
-    this.pipeline.addEffect(new PostProcessRenderEffect(this.engine, "chromatic", () => this.chromaticAberration));
+    this.pipeline.addEffect(
+      new PostProcessRenderEffect(this.engine, "fxaa", () => this.fxaa)
+    );
+    this.pipeline.addEffect(
+      new PostProcessRenderEffect(
+        this.engine,
+        "chromatic",
+        () => this.chromaticAberration
+      )
+    );
     this.scene.postProcessRenderPipelineManager.addPipeline(this.pipeline);
-    this.scene.postProcessRenderPipelineManager.attachCamerasToRenderPipeline(this.pipeline.name, this.camera, true);
-  }
-
-  private createWeapon(): void {
-    const slide = CreateBox("VX-9 slide", { width: 0.24, height: 0.19, depth: 0.7 }, this.scene);
-    slide.material = this.materials.gunmetal;
-    const barrel = CreateBox("VX-9 barrel", { width: 0.15, height: 0.14, depth: 0.3 }, this.scene);
-    barrel.position = new Vector3(0, -0.03, 0.43);
-    barrel.material = this.materials.gunmetal;
-    const root = Mesh.MergeMeshes([slide, barrel], true, true);
-    if (!root) throw new Error("Failed to merge weapon geometry");
-    root.parent = this.camera;
-    root.position = new Vector3(0.42, -0.37, 0.95);
-    root.rotation = new Vector3(-0.08, -0.04, 0.02);
-    root.isPickable = false;
-
-    const handle = CreateBox("VX-9 grip", { width: 0.2, height: 0.44, depth: 0.25 }, this.scene);
-    handle.parent = root;
-    handle.position = new Vector3(0, -0.28, -0.12);
-    handle.rotation.x = -0.24;
-    handle.material = this.materials.grip;
-    handle.isPickable = false;
-
-    this.muzzleLight = new PointLight("muzzle flash", new Vector3(0, 0, 0.73), this.scene);
-    this.muzzleLight.parent = root;
-    this.muzzleLight.diffuse = new Color3(1, 0.42, 0.08);
-    this.muzzleLight.range = 7;
-    this.muzzleLight.intensity = 0;
-    this.weapon = root;
+    this.scene.postProcessRenderPipelineManager.attachCamerasToRenderPipeline(
+      this.pipeline.name,
+      this.camera,
+      true
+    );
   }
 
   private bindEvents(): void {
@@ -197,27 +185,42 @@ export class Game {
     void startScreen;
 
     restartButton?.addEventListener("click", () => window.location.reload());
-    pauseRestartButton?.addEventListener("click", () => window.location.reload());
+    pauseRestartButton?.addEventListener("click", () =>
+      window.location.reload()
+    );
     resumeButton?.addEventListener("click", () => this.resume());
-    document.querySelectorAll<HTMLButtonElement>("[data-quality]").forEach((button) => {
-      button.addEventListener("click", () => {
-        this.quality.setPreset(button.dataset.quality as QualityPreset);
-        this.updateQualityButtons();
+    document
+      .querySelectorAll<HTMLButtonElement>("[data-quality]")
+      .forEach((button) => {
+        button.addEventListener("click", () => {
+          this.quality.setPreset(button.dataset.quality as QualityPreset);
+          this.updateQualityButtons();
+        });
       });
-    });
     document.addEventListener("pointerlockchange", () => {
-      if (this.started && !this.ended && !this.paused && document.pointerLockElement !== this.canvas) {
+      if (
+        this.started &&
+        !this.ended &&
+        !this.paused &&
+        document.pointerLockElement !== this.canvas
+      ) {
         this.pause();
       }
     });
     this.canvas.addEventListener("click", () => {
-      if (this.started && !this.paused && !this.ended && document.pointerLockElement !== this.canvas) {
+      if (
+        this.started &&
+        !this.paused &&
+        !this.ended &&
+        document.pointerLockElement !== this.canvas
+      ) {
         void this.canvas.requestPointerLock();
         void this.audio.resume();
       }
     });
     this.canvas.addEventListener("pointerdown", (event) => {
-      if (event.button === 0 && document.pointerLockElement === this.canvas) this.fire();
+      if (event.button === 0 && document.pointerLockElement === this.canvas)
+        this.fire();
     });
 
     window.addEventListener("keydown", (event) => {
@@ -247,77 +250,24 @@ export class Game {
     const frameMs = this.engine.getDeltaTime();
     const active = this.started && !this.paused && !this.ended;
     this.quality.update(frameMs, delta, active);
-    this.updateImpactPool();
+    this.effects.updateImpactPool();
     if (!active || !this.level) return;
 
-    this.updateMovement(delta);
+    const moving =
+      this.keys.has("KeyW") ||
+      this.keys.has("KeyA") ||
+      this.keys.has("KeyS") ||
+      this.keys.has("KeyD");
+    this.player.updateMovement(delta, this.keys);
     this.level.update(delta, this.camera.position);
-    this.updateWeapon(delta);
+    this.weaponSys.update(delta, moving);
     this.updateEnemies(delta);
-    this.updateAcidProjectiles(delta);
+    this.effects.updateAcidProjectiles(delta, this.camera.position, {
+      createImpact: (p, o, a) => this.effects.createImpact(p, o, a),
+      takeDamage: (d) => this.takeDamage(d),
+    });
     this.updatePickups();
     this.updateExtractionPrompt();
-  }
-
-  private updateWeapon(delta: number): void {
-    if (!this.weapon) return;
-    this.weaponKick = Math.max(0, this.weaponKick - delta * 5.4);
-    const moving = this.keys.has("KeyW") || this.keys.has("KeyA") || this.keys.has("KeyS") || this.keys.has("KeyD");
-    const time = performance.now() * 0.008;
-    const bob = moving ? Math.sin(time) * 0.012 : 0;
-    let reloadPose = 0;
-    let magazineSnap = 0;
-    if (this.reloading) {
-      this.reloadTime = Math.min(0.82, this.reloadTime + delta);
-      const progress = this.reloadTime / 0.82;
-      if (progress < 0.32) reloadPose = this.smoothStep(progress / 0.32);
-      else if (progress < 0.68) {
-        reloadPose = 1;
-        magazineSnap = Math.sin(((progress - 0.32) / 0.36) * Math.PI);
-      } else reloadPose = 1 - this.smoothStep((progress - 0.68) / 0.32);
-
-      if (this.reloadTime >= 0.82) this.finishReload();
-    }
-
-    this.weapon.position.x = 0.42 + reloadPose * 0.16;
-    this.weapon.position.y = -0.37 + bob - this.weaponKick * 0.08 - reloadPose * 0.29 - magazineSnap * 0.055;
-    this.weapon.position.z = 0.95 - reloadPose * 0.08;
-    this.weapon.rotation.x = -0.08 + this.weaponKick * 0.24 + reloadPose * 0.46 - magazineSnap * 0.12;
-    this.weapon.rotation.y = -0.04 - reloadPose * 0.34;
-    this.weapon.rotation.z = 0.02 + reloadPose * 0.52 + magazineSnap * 0.09;
-  }
-
-  private updateMovement(delta: number): void {
-    const forwardInput = Number(this.keys.has("KeyW")) - Number(this.keys.has("KeyS"));
-    const strafeInput = Number(this.keys.has("KeyD")) - Number(this.keys.has("KeyA"));
-    const inputLength = Math.hypot(forwardInput, strafeInput);
-    const yaw = this.camera.rotation.y;
-    if (inputLength > 0) {
-      const speed = this.keys.has("ShiftLeft") || this.keys.has("ShiftRight") ? 13 : 8.5;
-      const normalizedForward = forwardInput / inputLength;
-      const normalizedStrafe = strafeInput / inputLength;
-      this.moveVector.set(
-        (Math.sin(yaw) * normalizedForward + Math.cos(yaw) * normalizedStrafe) * speed * delta,
-        0,
-        (Math.cos(yaw) * normalizedForward - Math.sin(yaw) * normalizedStrafe) * speed * delta,
-      );
-      this.camera.cameraDirection.x = this.moveVector.x;
-      this.camera.cameraDirection.z = this.moveVector.z;
-    } else {
-      this.camera.cameraDirection.x = 0;
-      this.camera.cameraDirection.z = 0;
-    }
-
-    this.groundCheckTimer -= delta;
-    if (this.groundCheckTimer <= 0) {
-      this.groundCheckTimer = 1 / 30;
-      this.groundRay.origin.copyFrom(this.camera.position);
-      const hit = this.scene.pickWithRay(this.groundRay, (mesh) => Boolean(mesh.metadata?.collision));
-      this.grounded = Boolean(hit?.hit && hit.distance <= 1.86);
-    }
-    if (this.grounded && this.verticalVelocity < 0) this.verticalVelocity = -0.8;
-    else this.verticalVelocity -= 22 * delta;
-    this.camera.cameraDirection.y = this.verticalVelocity * delta;
   }
 
   private updateEnemies(delta: number): void {
@@ -326,77 +276,33 @@ export class Game {
         delta,
         this.camera.position,
         (damage) => this.takeDamage(damage),
-        (origin) => this.throwAcid(origin),
+        (origin) =>
+          this.effects.throwAcid(origin, this.camera.position, () =>
+            this.audio.acidThrow()
+          )
       );
     });
-  }
-
-  private throwAcid(origin: Vector3): void {
-    const projectile = this.acidProjectiles.find((entry) => !entry.active) ?? this.acidProjectiles[0];
-    const distance = Vector3.Distance(origin, this.camera.position);
-    const flightTime = Math.max(0.65, Math.min(1.3, distance / 12));
-    const gravity = 12;
-    projectile.mesh.position.copyFrom(origin);
-    projectile.velocity.set(
-      (this.camera.position.x - origin.x) / flightTime,
-      (this.camera.position.y - 0.35 - origin.y + 0.5 * gravity * flightTime * flightTime) / flightTime,
-      (this.camera.position.z - origin.z) / flightTime,
-    );
-    projectile.active = true;
-    projectile.age = 0;
-    projectile.mesh.setEnabled(true);
-    this.audio.acidThrow();
-  }
-
-  private updateAcidProjectiles(delta: number): void {
-    const gravity = 12;
-    this.acidProjectiles.forEach((projectile) => {
-      if (!projectile.active) return;
-      projectile.age += delta;
-      projectile.velocity.y -= gravity * delta;
-      projectile.nextPosition.copyFrom(projectile.velocity).scaleInPlace(delta).addInPlace(projectile.mesh.position);
-
-      const travel = Vector3.Distance(projectile.mesh.position, projectile.nextPosition);
-      projectile.nextPosition.subtractToRef(projectile.mesh.position, projectile.direction);
-      projectile.direction.normalize();
-      projectile.ray.origin.copyFrom(projectile.mesh.position);
-      projectile.ray.length = travel;
-      const hit = this.scene.pickWithRay(projectile.ray, (mesh) => Boolean(mesh.metadata?.collision));
-      const playerDistance = Vector3.Distance(projectile.nextPosition, this.camera.position);
-      if (hit?.hit && hit.pickedPoint) {
-        this.createImpact(hit.pickedPoint, false, true);
-        this.disableAcidProjectile(projectile);
-      } else if (playerDistance < 0.72) {
-        this.createImpact(projectile.nextPosition, false, true);
-        this.takeDamage(18);
-        this.disableAcidProjectile(projectile);
-      } else if (projectile.age >= 3) {
-        this.disableAcidProjectile(projectile);
-      } else {
-        projectile.mesh.position.copyFrom(projectile.nextPosition);
-        projectile.mesh.rotation.x += delta * 8;
-        projectile.mesh.rotation.z += delta * 11;
-      }
-    });
-  }
-
-  private disableAcidProjectile(projectile: AcidProjectile): void {
-    projectile.active = false;
-    projectile.mesh.setEnabled(false);
   }
 
   private updatePickups(): void {
     if (!this.level) return;
     this.level.pickups.forEach((pickup) => {
-      if (!pickup.active || Vector3.Distance(pickup.mesh.position, this.camera.position) > 1.45) return;
+      if (
+        !pickup.active ||
+        Vector3.Distance(pickup.mesh.position, this.camera.position) > 1.45
+      )
+        return;
       if (pickup.kind === "health") {
-        if (this.health >= 100) return;
-        this.health = Math.min(100, this.health + 35);
+        if (this.health >= COMBAT.MAX_HEALTH) return;
+        this.health = Math.min(
+          COMBAT.MAX_HEALTH,
+          this.health + COMBAT.HEALTH_KIT_RESTORE
+        );
         this.hud.setHealth(this.health);
         this.hud.flashMessage("Trauma kit acquired");
       } else {
-        this.reserve += 18;
-        this.hud.setAmmo(this.ammo, this.reserve);
+        this.weaponSys.addReserve(COMBAT.AMMO_PICKUP);
+        this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
         this.hud.flashMessage("VX-9 ammunition acquired");
       }
       pickup.active = false;
@@ -407,90 +313,105 @@ export class Game {
 
   private updateExtractionPrompt(): void {
     if (!this.level) return;
-    const distance = Vector3.Distance(this.level.extractionConsole.position, this.camera.position);
-    if (distance > 2.6) {
+    const distance = Vector3.Distance(
+      this.level.extractionConsole.position,
+      this.camera.position
+    );
+    if (distance > LEVEL.EXTRACTION_DISTANCE) {
       this.hud.setPrompt("");
       return;
     }
     const remaining = this.enemies.length - this.kills;
-    this.hud.setPrompt(remaining > 0 ? `LOCKDOWN ACTIVE // ${remaining} HOSTILES REMAIN` : "[ E ] AUTHORIZE EXTRACTION");
+    this.hud.setPrompt(
+      remaining > 0
+        ? `LOCKDOWN ACTIVE // ${remaining} HOSTILES REMAIN`
+        : "[ E ] AUTHORIZE EXTRACTION"
+    );
   }
 
   private fire(): void {
-    if (!this.started || this.paused || this.ended || this.reloading) return;
-    if (this.ammo <= 0) {
+    if (
+      !this.started ||
+      this.paused ||
+      this.ended ||
+      this.weaponSys.isReloading()
+    )
+      return;
+    if (this.weaponSys.getClip() <= 0) {
       this.audio.empty();
       this.hud.flashMessage("Magazine empty", 700);
       return;
     }
 
-    this.ammo -= 1;
-    this.weaponKick = 1;
-    this.hud.setAmmo(this.ammo, this.reserve);
+    if (!this.weaponSys.tryFire()) return;
+    this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
     this.hud.kickCrosshair();
     this.audio.shoot();
-    if (this.muzzleLight) {
-      this.level?.setLightBudget(Math.max(1, this.currentSettings.dynamicLights - 1));
-      this.muzzleLight.intensity = 4;
-      window.setTimeout(() => {
-        if (this.muzzleLight) this.muzzleLight.intensity = 0;
-        this.level?.setLightBudget(this.currentSettings.dynamicLights);
-      }, 42);
+
+    const muzzle = this.weaponSys.getMuzzleLight();
+    if (muzzle) {
+      this.level?.setLightBudget(
+        Math.max(1, this.currentSettings.dynamicLights - 1)
+      );
+      this.weaponSys.triggerMuzzle(
+        () => (muzzle.intensity = WEAPON.MUZZLE_FLASH_INTENSITY),
+        () => {
+          if (muzzle) muzzle.intensity = 0;
+          this.level?.setLightBudget(this.currentSettings.dynamicLights);
+        }
+      );
     }
 
-    const ray = this.camera.getForwardRay(80);
-    const hit = this.scene.pickWithRay(ray, (mesh) => mesh.isPickable && mesh.isEnabled());
+    const ray = this.camera.getForwardRay(WEAPON.FIRE_RANGE);
+    const hit = this.scene.pickWithRay(
+      ray,
+      (mesh) => mesh.isPickable && mesh.isEnabled()
+    );
     if (!hit?.hit || !hit.pickedMesh) return;
-    const enemy = hit.pickedMesh.metadata?.enemy as Enemy | undefined;
+
+    const meta = hit.pickedMesh.metadata;
+    const enemy = isEnemyMetadata(meta) ? meta.enemy : undefined;
     if (!enemy || enemy.isDead) {
-      if (hit.pickedPoint) this.createImpact(hit.pickedPoint, false);
+      if (hit.pickedPoint) this.effects.createImpact(hit.pickedPoint, false);
       return;
     }
 
-    const killed = enemy.damage(34);
+    const killed = enemy.damage(COMBAT.PISTOL_DAMAGE);
     this.hud.showHit();
     this.audio.hit();
-    if (hit.pickedPoint) this.createImpact(hit.pickedPoint, true);
+    if (hit.pickedPoint) this.effects.createImpact(hit.pickedPoint, true);
     if (killed) {
       this.kills += 1;
-      this.hud.flashMessage(this.kills === this.enemies.length ? "Sector clear // Extraction unlocked" : "Infected neutralized");
+      this.hud.flashMessage(
+        this.kills === this.enemies.length
+          ? "Sector clear // Extraction unlocked"
+          : "Infected neutralized"
+      );
     }
   }
 
   private reload(): void {
-    if (this.reloading || this.ammo === 12 || this.reserve === 0) return;
-    this.reloading = true;
-    this.reloadTime = 0;
-    this.weaponKick = 0;
-    this.hud.flashMessage("Reloading", 800);
-    this.audio.reload();
-  }
-
-  private finishReload(): void {
-    const needed = 12 - this.ammo;
-    const loaded = Math.min(needed, this.reserve);
-    this.ammo += loaded;
-    this.reserve -= loaded;
-    this.reloading = false;
-    this.reloadTime = 0;
-    this.hud.setAmmo(this.ammo, this.reserve);
-  }
-
-  private smoothStep(value: number): number {
-    const clamped = Math.max(0, Math.min(1, value));
-    return clamped * clamped * (3 - 2 * clamped);
+    if (this.weaponSys.tryReload()) {
+      this.hud.flashMessage("Reloading", 800);
+      this.audio.reload();
+    }
   }
 
   private jump(): void {
-    if (!this.grounded) return;
-    this.grounded = false;
-    this.verticalVelocity = 7.2;
+    this.player.jump();
   }
 
   private interact(): void {
     if (!this.level) return;
-    const distance = Vector3.Distance(this.level.extractionConsole.position, this.camera.position);
-    if (distance <= 2.6 && this.kills === this.enemies.length) this.finish(true);
+    const distance = Vector3.Distance(
+      this.level.extractionConsole.position,
+      this.camera.position
+    );
+    if (
+      distance <= LEVEL.EXTRACTION_DISTANCE &&
+      this.kills === this.enemies.length
+    )
+      this.finish(true);
   }
 
   private takeDamage(amount: number): void {
@@ -513,10 +434,14 @@ export class Game {
     const copy = document.getElementById("end-copy");
     const eyebrow = document.getElementById("end-eyebrow");
     if (success) {
-      const elapsed = Math.max(1, Math.round((performance.now() - this.startTime) / 1000));
+      const elapsed = Math.max(
+        1,
+        Math.round((performance.now() - this.startTime) / 1000)
+      );
       if (eyebrow) eyebrow.textContent = "SECTOR STATUS // CONTAINED";
       if (title) title.textContent = "EXTRACTION SECURED";
-      if (copy) copy.textContent = `${this.kills} infected neutralized in ${elapsed} seconds.`;
+      if (copy)
+        copy.textContent = `${this.kills} infected neutralized in ${elapsed} seconds.`;
       this.audio.success();
     } else {
       if (eyebrow) eyebrow.textContent = "BIOMETRIC SIGNAL LOST";
@@ -544,15 +469,6 @@ export class Game {
     void this.canvas.requestPointerLock();
   }
 
-  private createImpact(position: Vector3, organic: boolean, acid = false): void {
-    const entry = this.impacts.find((impact) => !impact.mesh.isEnabled()) ?? this.impacts[0];
-    entry.mesh.position.copyFrom(position);
-    entry.mesh.material = acid ? this.materials.acid : organic ? this.materials.organicImpact : this.materials.hardImpact;
-    entry.mesh.scaling.setAll(acid ? 3.2 : 1);
-    entry.expiresAt = performance.now() + 1200;
-    entry.mesh.setEnabled(true);
-  }
-
   start(): void {
     if (this.started) return;
     this.started = true;
@@ -565,72 +481,40 @@ export class Game {
     this.hud.flashMessage("Emergency power online");
   }
 
-  private createImpactPool(): void {
-    for (let index = 0; index < 16; index += 1) {
-      const mesh = CreateSphere(`impact-${index}`, { diameter: 0.09, segments: 5 }, this.scene);
-      mesh.isPickable = false;
-      mesh.setEnabled(false);
-      this.impacts.push({ mesh, expiresAt: 0 });
-    }
-  }
-
-  private createAcidProjectilePool(): void {
-    for (let index = 0; index < 6; index += 1) {
-      const core = CreateSphere(`acid-projectile-${index}`, { diameter: 0.25, segments: 6 }, this.scene);
-      core.material = this.materials.acid;
-      core.scaling.set(0.8, 0.8, 1.65);
-      core.isPickable = false;
-      core.setEnabled(false);
-      const direction = new Vector3(0, 0, 1);
-      this.acidProjectiles.push({
-        mesh: core,
-        velocity: new Vector3(),
-        nextPosition: new Vector3(),
-        direction,
-        ray: new Ray(new Vector3(), direction, 0),
-        active: false,
-        age: 0,
-      });
-    }
-  }
-
-  private updateImpactPool(): void {
-    const now = performance.now();
-    this.impacts.forEach((impact) => {
-      if (impact.mesh.isEnabled() && impact.expiresAt <= now) impact.mesh.setEnabled(false);
-    });
-  }
-
   private applyQuality(_tier: QualityTier, settings: QualitySettings): void {
     this.currentSettings = settings;
     this.engine.setHardwareScalingLevel(1 / settings.renderScale);
     this.engine.resize();
     this.bloom._downscale.samples = settings.samples;
-    this.scene.postProcessRenderPipelineManager[settings.bloom ? "enableEffectInPipeline" : "disableEffectInPipeline"](
-      this.pipeline.name,
-      "bloom",
-      this.camera,
-    );
-    this.scene.postProcessRenderPipelineManager[settings.antialiasing === "fxaa" ? "enableEffectInPipeline" : "disableEffectInPipeline"](
-      this.pipeline.name,
-      "fxaa",
-      this.camera,
-    );
-    this.scene.postProcessRenderPipelineManager[settings.chromaticAberration ? "enableEffectInPipeline" : "disableEffectInPipeline"](
-      this.pipeline.name,
-      "chromatic",
-      this.camera,
-    );
+    this.scene.postProcessRenderPipelineManager[
+      settings.bloom ? "enableEffectInPipeline" : "disableEffectInPipeline"
+    ](this.pipeline.name, "bloom", this.camera);
+    this.scene.postProcessRenderPipelineManager[
+      settings.antialiasing === "fxaa"
+        ? "enableEffectInPipeline"
+        : "disableEffectInPipeline"
+    ](this.pipeline.name, "fxaa", this.camera);
+    this.scene.postProcessRenderPipelineManager[
+      settings.chromaticAberration
+        ? "enableEffectInPipeline"
+        : "disableEffectInPipeline"
+    ](this.pipeline.name, "chromatic", this.camera);
     this.level?.setLightBudget(settings.dynamicLights);
     this.updateQualityButtons();
   }
 
   private updateQualityButtons(): void {
     const preset = this.quality.getPreset();
-    document.querySelectorAll<HTMLButtonElement>("[data-quality]").forEach((button) => {
-      button.classList.toggle("active", button.dataset.quality === preset);
-    });
+    document
+      .querySelectorAll<HTMLButtonElement>("[data-quality]")
+      .forEach((button) => {
+        button.classList.toggle("active", button.dataset.quality === preset);
+      });
     const status = document.getElementById("quality-status");
-    if (status) status.textContent = preset === "auto" ? `Adaptive quality // ${this.quality.getTier()}` : `${preset} quality locked`;
+    if (status)
+      status.textContent =
+        preset === "auto"
+          ? `Adaptive quality // ${this.quality.getTier()}`
+          : `${preset} quality locked`;
   }
 }
