@@ -12,6 +12,7 @@ Read `docs/design.md` for gameplay and art direction. Use `docs/concept1.webp` a
 - Run locally: `bun run dev`
 - Run tests: `bun test`
 - Type-check and production build: `bun run build`
+- Lint and format: `bun lint` (or `bun lint:fix`, `bun format`)
 
 Before finishing code changes, run both `bun test` and `bun run build`.
 

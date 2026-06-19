@@ -49,7 +49,10 @@ export class AudioSystem {
 
   success(): void {
     [260, 390, 520].forEach((frequency, index) => {
-      window.setTimeout(() => this.tone(frequency, 0.35, "sine", 0.07, frequency * 1.1), index * 160);
+      window.setTimeout(
+        () => this.tone(frequency, 0.35, "sine", 0.07, frequency * 1.1),
+        index * 160
+      );
     });
   }
 
@@ -79,7 +82,7 @@ export class AudioSystem {
     duration: number,
     type: OscillatorType,
     volume: number,
-    endFrequency = frequency,
+    endFrequency = frequency
   ): void {
     if (!this.context || !this.master) return;
     const now = this.context.currentTime;
@@ -87,7 +90,10 @@ export class AudioSystem {
     const gain = this.context.createGain();
     oscillator.type = type;
     oscillator.frequency.setValueAtTime(frequency, now);
-    oscillator.frequency.exponentialRampToValueAtTime(Math.max(1, endFrequency), now + duration);
+    oscillator.frequency.exponentialRampToValueAtTime(
+      Math.max(1, endFrequency),
+      now + duration
+    );
     gain.gain.setValueAtTime(volume, now);
     gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
     oscillator.connect(gain).connect(this.master);
@@ -100,7 +106,10 @@ export class AudioSystem {
     const source = this.context.createBufferSource();
     const gain = this.context.createGain();
     gain.gain.setValueAtTime(volume, this.context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.001, this.context.currentTime + duration);
+    gain.gain.exponentialRampToValueAtTime(
+      0.001,
+      this.context.currentTime + duration
+    );
     source.buffer = this.shotNoise ?? this.createNoiseBuffer(duration);
     source.connect(gain).connect(this.master);
     source.start();
@@ -109,9 +118,14 @@ export class AudioSystem {
   private createNoiseBuffer(duration: number): AudioBuffer {
     if (!this.context) throw new Error("Audio context is not initialized");
     const sampleCount = Math.floor(this.context.sampleRate * duration);
-    const buffer = this.context.createBuffer(1, sampleCount, this.context.sampleRate);
+    const buffer = this.context.createBuffer(
+      1,
+      sampleCount,
+      this.context.sampleRate
+    );
     const channel = buffer.getChannelData(0);
-    for (let index = 0; index < sampleCount; index += 1) channel[index] = Math.random() * 2 - 1;
+    for (let index = 0; index < sampleCount; index += 1)
+      channel[index] = Math.random() * 2 - 1;
     return buffer;
   }
 }

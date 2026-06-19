@@ -52,7 +52,11 @@ export class AdaptiveQualityController {
 
   constructor(public tier: QualityTier = "medium") {}
 
-  update(frameMs: number, deltaSeconds: number, active: boolean): QualityTier | null {
+  update(
+    frameMs: number,
+    deltaSeconds: number,
+    active: boolean
+  ): QualityTier | null {
     if (!active) return null;
     this.cooldown = Math.max(0, this.cooldown - deltaSeconds);
     if (this.cooldown > 0) return null;
@@ -82,7 +86,10 @@ export class AdaptiveQualityController {
 
   private shift(direction: -1 | 1): QualityTier | null {
     const currentIndex = TIERS.indexOf(this.tier);
-    const nextIndex = Math.max(0, Math.min(TIERS.length - 1, currentIndex + direction));
+    const nextIndex = Math.max(
+      0,
+      Math.min(TIERS.length - 1, currentIndex + direction)
+    );
     this.slowDuration = 0;
     this.fastDuration = 0;
     if (nextIndex === currentIndex) return null;
@@ -97,8 +104,14 @@ export class QualityManager {
   private readonly adaptive = new AdaptiveQualityController("medium");
 
   constructor(
-    private readonly applySettings: (tier: QualityTier, settings: QualitySettings) => void,
-    private readonly storage: StorageLike | undefined = typeof localStorage === "undefined" ? undefined : localStorage,
+    private readonly applySettings: (
+      tier: QualityTier,
+      settings: QualitySettings
+    ) => void,
+    private readonly storage: StorageLike | undefined = typeof localStorage ===
+    "undefined"
+      ? undefined
+      : localStorage
   ) {
     this.preset = this.readPreset();
   }
@@ -136,6 +149,11 @@ export class QualityManager {
 
   private readPreset(): QualityPreset {
     const value = this.storage?.getItem(STORAGE_KEY);
-    return value === "low" || value === "medium" || value === "high" || value === "auto" ? value : "auto";
+    return value === "low" ||
+      value === "medium" ||
+      value === "high" ||
+      value === "auto"
+      ? value
+      : "auto";
   }
 }
