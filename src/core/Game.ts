@@ -97,7 +97,12 @@ export class Game {
       new Vector3(0, PLAYER.HEIGHT, -36),
       this.scene
     );
-    this.player = new PlayerController(cam, this.scene);
+    this.player = new PlayerController(
+      cam,
+      this.scene,
+      () => this.keys,
+      () => this.isGameplayActive()
+    );
     this.camera = this.player.camera;
     this.weaponSys = new WeaponSystem(this.scene, this.materials, {
       onReloadComplete: () =>
@@ -214,7 +219,7 @@ export class Game {
         !this.ended &&
         document.pointerLockElement !== this.canvas
       ) {
-        void this.canvas.requestPointerLock();
+        this.requestPointerLock();
         void this.audio.resume();
       }
     });
@@ -238,9 +243,15 @@ export class Game {
         return;
       }
       if (this.paused) return;
+      if (
+        event.code === "KeyR" ||
+        event.code === "KeyE" ||
+        event.code === "Space"
+      )
+        event.preventDefault();
       if (event.code === "KeyR") this.reload();
       if (event.code === "KeyE") this.interact();
-      if (event.code === "Space") this.jump();
+      if (event.code === "Space" && !event.repeat) this.jump();
     });
     window.addEventListener("keyup", (event) => this.keys.delete(event.code));
   }
@@ -248,17 +259,17 @@ export class Game {
   private update(): void {
     const delta = Math.min(0.033, this.engine.getDeltaTime() / 1000);
     const frameMs = this.engine.getDeltaTime();
-    const active = this.started && !this.paused && !this.ended;
+    const active = this.isGameplayActive();
     this.quality.update(frameMs, delta, active);
     this.effects.updateImpactPool();
     if (!active || !this.level) return;
+    this.player.syncCameraHeight();
 
     const moving =
       this.keys.has("KeyW") ||
       this.keys.has("KeyA") ||
       this.keys.has("KeyS") ||
       this.keys.has("KeyD");
-    this.player.updateMovement(delta, this.keys);
     this.level.update(delta, this.camera.position);
     this.weaponSys.update(delta, moving);
     this.updateEnemies(delta);
@@ -268,6 +279,10 @@ export class Game {
     });
     this.updatePickups();
     this.updateExtractionPrompt();
+  }
+
+  private isGameplayActive(): boolean {
+    return this.started && !this.paused && !this.ended;
   }
 
   private updateEnemies(delta: number): void {
@@ -466,7 +481,7 @@ export class Game {
     document.getElementById("pause-screen")?.classList.remove("visible");
     this.camera.attachControl(this.canvas, true);
     void this.audio.resume();
-    void this.canvas.requestPointerLock();
+    this.requestPointerLock();
   }
 
   start(): void {
@@ -477,8 +492,12 @@ export class Game {
     document.getElementById("start-screen")?.classList.remove("visible");
     this.hud.show();
     void this.audio.resume();
-    void this.canvas.requestPointerLock();
+    this.requestPointerLock();
     this.hud.flashMessage("Emergency power online");
+  }
+
+  private requestPointerLock(): void {
+    void this.canvas.requestPointerLock().catch(() => undefined);
   }
 
   private applyQuality(_tier: QualityTier, settings: QualitySettings): void {
