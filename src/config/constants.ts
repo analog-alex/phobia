@@ -7,7 +7,7 @@
 
 export const PLAYER = {
   /** Eye/camera height */
-  HEIGHT: 1.82,
+  HEIGHT: 2.75,
   /** Collision capsule radius */
   RADIUS: 0.42,
   /** Half height for ellipsoid */
@@ -33,9 +33,9 @@ export const PHYSICS = {
   GROUND_CHECK_HZ: 30,
   GROUND_CHECK_INTERVAL: 1 / 30,
   /** Downward ray length for ground probe */
-  GROUND_RAY_LENGTH: 2.03,
+  GROUND_RAY_LENGTH: 2.96,
   /** Max distance to consider grounded */
-  GROUND_HIT_DISTANCE: 1.86,
+  GROUND_HIT_DISTANCE: 2.79,
   /** Gravity accel (units/s^2) */
   GRAVITY: 22,
   /** When grounded and falling, clamp vertical vel */

@@ -170,6 +170,67 @@ button:hover {
   font-size: 11px;
 }
 
+.intro-screen {
+  z-index: 24;
+  overflow: hidden;
+  background:
+    linear-gradient(rgba(120, 255, 225, 0.035) 50%, transparent 50%) 0 0 / 100%
+    4px,
+    radial-gradient(circle at 50% 62%, rgba(8, 29, 32, 0.52), transparent 48%),
+    #000;
+  backdrop-filter: none;
+  transition:
+    opacity 1.9s ease,
+    filter 1.9s ease;
+}
+
+.intro-screen::before {
+  position: absolute;
+  inset: -20%;
+  content: "";
+  background:
+    radial-gradient(circle, transparent 48%, rgba(0, 0, 0, 0.88) 72%),
+    linear-gradient(
+      120deg,
+      transparent 42%,
+      rgba(120, 255, 225, 0.08),
+      transparent 58%
+    );
+  opacity: 0.64;
+  transform: translateX(-7%);
+  animation: intro-scan 7.6s ease-in-out forwards;
+}
+
+.intro-screen.dissolving {
+  opacity: 0;
+  filter: blur(14px) brightness(1.7);
+  pointer-events: none;
+}
+
+.intro-copy {
+  position: relative;
+  width: min(760px, calc(100vw - 48px));
+  opacity: 0;
+  transform: translateY(12px);
+  color: #d8fff7;
+  font-size: clamp(15px, 2vw, 19px);
+  line-height: 1.75;
+  text-align: left;
+  text-shadow:
+    0 0 20px rgba(120, 255, 225, 0.18),
+    0 0 70px rgba(120, 255, 225, 0.12);
+  animation: intro-copy-arrival 1.5s ease forwards;
+}
+
+.intro-copy p {
+  margin: 0 0 24px;
+}
+
+.intro-copy p:last-child {
+  margin-bottom: 0;
+  color: var(--cyan);
+}
+
 .pause-screen {
   background: linear-gradient(
     115deg,
@@ -214,16 +275,26 @@ button:hover {
 }
 .quality-options {
   display: inline-flex;
+  align-items: stretch;
+  min-width: 0;
+  height: 42px;
+  margin: 0;
+  padding: 0;
   border: 1px solid rgba(120, 255, 225, 0.25);
 }
 .quality-options button {
-  padding: 9px 14px;
+  display: grid;
+  min-width: 86px;
+  height: 100%;
+  padding: 0 18px;
   border: 0;
   border-right: 1px solid rgba(120, 255, 225, 0.18);
+  place-items: center;
   color: #6f8b85;
   background: rgba(3, 16, 13, 0.65);
   box-shadow: none;
   font-size: 9px;
+  line-height: 1;
 }
 .quality-options button:last-child {
   border-right: 0;
@@ -416,6 +487,14 @@ button:hover {
   .controls {
     grid-template-columns: repeat(2, 1fr);
   }
+  .intro-copy {
+    width: min(560px, calc(100vw - 32px));
+    font-size: 14px;
+    line-height: 1.62;
+  }
+  .intro-copy p {
+    margin-bottom: 18px;
+  }
   #objective {
     left: 18px;
     top: 18px;
@@ -425,5 +504,26 @@ button:hover {
   }
   .ammo-block {
     right: 18px;
+  }
+}
+
+@keyframes intro-copy-arrival {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes intro-scan {
+  0% {
+    opacity: 0.34;
+    transform: translateX(-8%);
+  }
+  45% {
+    opacity: 0.68;
+  }
+  100% {
+    opacity: 0.52;
+    transform: translateX(8%);
   }
 }

@@ -17,8 +17,10 @@ export class AudioSystem {
   }
 
   shoot(): void {
-    this.noise(0.07, 0.4);
-    this.tone(105, 0.08, "square", 0.28, 42);
+    this.filteredNoise(0.028, 0.82, "highpass", 1200, 0.7);
+    this.filteredNoise(0.095, 0.48, "lowpass", 620, 0.9);
+    this.tone(76, 0.12, "sawtooth", 0.34, 34);
+    this.tone(190, 0.035, "square", 0.16, 86);
   }
 
   empty(): void {
@@ -101,18 +103,26 @@ export class AudioSystem {
     oscillator.stop(now + duration);
   }
 
-  private noise(duration: number, volume: number): void {
+  private filteredNoise(
+    duration: number,
+    volume: number,
+    type: BiquadFilterType,
+    frequency: number,
+    q: number
+  ): void {
     if (!this.context || !this.master) return;
     const source = this.context.createBufferSource();
+    const filter = this.context.createBiquadFilter();
     const gain = this.context.createGain();
-    gain.gain.setValueAtTime(volume, this.context.currentTime);
-    gain.gain.exponentialRampToValueAtTime(
-      0.001,
-      this.context.currentTime + duration
-    );
+    const now = this.context.currentTime;
+    filter.type = type;
+    filter.frequency.value = frequency;
+    filter.Q.value = q;
+    gain.gain.setValueAtTime(volume, now);
+    gain.gain.exponentialRampToValueAtTime(0.001, now + duration);
     source.buffer = this.shotNoise ?? this.createNoiseBuffer(duration);
-    source.connect(gain).connect(this.master);
-    source.start();
+    source.connect(filter).connect(gain).connect(this.master);
+    source.start(now);
   }
 
   private createNoiseBuffer(duration: number): AudioBuffer {

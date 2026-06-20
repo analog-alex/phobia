@@ -14,13 +14,18 @@ export class PlayerController {
 
   private grounded = false;
   private verticalVelocity = 0;
+  private verticalOffset = 0;
   private groundCheckTimer = 0;
+  private jumpBufferTimer = 0;
+  private movementInputAttached = false;
 
   readonly camera: UniversalCamera;
 
   constructor(
     camera: UniversalCamera,
-    private readonly scene: Scene
+    private readonly scene: Scene,
+    private readonly getKeys: () => ReadonlySet<string>,
+    private readonly isMovementEnabled: () => boolean
   ) {
     this.camera = camera;
     this.configureCamera();
@@ -44,19 +49,48 @@ export class PlayerController {
   attachControl(canvas: HTMLCanvasElement): void {
     this.camera.attachControl(canvas, true);
     this.camera.inputs.removeByType("FreeCameraKeyboardMoveInput");
+    if (!this.movementInputAttached) {
+      this.camera.inputs.add({
+        camera: this.camera,
+        attachControl: () => undefined,
+        detachControl: () => undefined,
+        getClassName: () => "PhobiaPlayerMovementInput",
+        getSimpleName: () => "phobiaPlayerMovement",
+        checkInputs: () => this.checkMovementInput(),
+      });
+      this.movementInputAttached = true;
+    }
   }
 
   detachControl(): void {
     this.camera.detachControl();
   }
 
+  syncCameraHeight(): void {
+    this.camera.position.y = PLAYER.HEIGHT + this.verticalOffset;
+  }
+
   jump(): void {
-    if (!this.grounded) return;
+    this.jumpBufferTimer = 0.14;
+  }
+
+  private consumeJump(): void {
+    if (!this.grounded || this.jumpBufferTimer <= 0) return;
     this.grounded = false;
+    this.jumpBufferTimer = 0;
     this.verticalVelocity = PLAYER.JUMP_VELOCITY;
   }
 
-  updateMovement(delta: number, keys: ReadonlySet<string>): void {
+  private checkMovementInput(): void {
+    if (!this.isMovementEnabled()) {
+      this.camera.cameraDirection.set(0, 0, 0);
+      return;
+    }
+    const delta = Math.min(0.033, this.scene.getEngine().getDeltaTime() / 1000);
+    this.updateMovement(delta, this.getKeys());
+  }
+
+  private updateMovement(delta: number, keys: ReadonlySet<string>): void {
     const forwardInput = Number(keys.has("KeyW")) - Number(keys.has("KeyS"));
     const strafeInput = Number(keys.has("KeyD")) - Number(keys.has("KeyA"));
     const inputLength = Math.hypot(forwardInput, strafeInput);
@@ -82,7 +116,7 @@ export class PlayerController {
     }
 
     this.groundCheckTimer -= delta;
-    if (this.groundCheckTimer <= 0) {
+    if (this.groundCheckTimer <= 0 && this.verticalOffset <= 0) {
       this.groundCheckTimer = PHYSICS.GROUND_CHECK_INTERVAL;
       this.groundRay.origin.copyFrom(this.camera.position);
       const hit = this.scene.pickWithRay(this.groundRay, (mesh) =>
@@ -99,12 +133,23 @@ export class PlayerController {
         hit?.hit && hit.distance <= PHYSICS.GROUND_HIT_DISTANCE
       );
     }
+    this.jumpBufferTimer = Math.max(0, this.jumpBufferTimer - delta);
+    this.consumeJump();
 
-    if (this.grounded && this.verticalVelocity < 0)
+    if (this.grounded && this.verticalVelocity < 0) {
       this.verticalVelocity = PHYSICS.GROUNDED_VERTICAL_CLAMP;
-    else this.verticalVelocity -= PHYSICS.GRAVITY * delta;
-
-    this.camera.cameraDirection.y = this.verticalVelocity * delta;
+      this.verticalOffset = 0;
+    } else {
+      this.verticalVelocity -= PHYSICS.GRAVITY * delta;
+      this.verticalOffset += this.verticalVelocity * delta;
+      if (this.verticalVelocity <= 0 && this.verticalOffset <= 0) {
+        this.verticalOffset = 0;
+        this.verticalVelocity = PHYSICS.GROUNDED_VERTICAL_CLAMP;
+        this.grounded = true;
+      }
+    }
+    this.syncCameraHeight();
+    this.camera.cameraDirection.y = 0;
   }
 
   get isGrounded(): boolean {
@@ -113,6 +158,8 @@ export class PlayerController {
 
   /** For potential external reset (e.g. future spawn) */
   resetVertical(): void {
+    this.verticalOffset = 0;
     this.verticalVelocity = 0;
+    this.syncCameraHeight();
   }
 }
