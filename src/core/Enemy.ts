@@ -2,7 +2,9 @@ import type { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { Scalar } from "@babylonjs/core/Maths/math.scalar";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
@@ -40,7 +42,8 @@ export class Enemy {
     this.visualRoot = new TransformNode(`enemy-visual-${variant}`, scene);
     this.visualRoot.parent = this.root;
 
-    const { uniform, skin, eye } = materials.enemy(variant);
+    const { coat, pants, skin, tissue, eye, hair, glasses } =
+      materials.enemy(variant);
 
     const runner = variant === "runner";
     const lean = runner ? -0.31 : -0.2;
@@ -51,7 +54,7 @@ export class Enemy {
           { width: 0.76, height: 0.98, depth: 0.42 },
           scene
         ),
-        uniform,
+        coat,
         new Vector3(0.03, 1.22, -0.04),
         new Vector3(lean, 0, -0.07)
       ),
@@ -61,7 +64,7 @@ export class Enemy {
           { width: 0.28, height: 0.92, depth: 0.31 },
           scene
         ),
-        uniform,
+        pants,
         new Vector3(-0.2, 0.46, 0.03),
         new Vector3(0.08, 0, -0.04)
       ),
@@ -71,7 +74,7 @@ export class Enemy {
           { width: 0.27, height: 0.88, depth: 0.3 },
           scene
         ),
-        uniform,
+        pants,
         new Vector3(0.21, 0.43, -0.02),
         new Vector3(-0.12, 0, 0.08)
       ),
@@ -81,7 +84,7 @@ export class Enemy {
           { width: 0.3, height: 0.32, depth: 0.44 },
           scene
         ),
-        uniform,
+        coat,
         new Vector3(-0.43, 1.54, -0.08),
         new Vector3(lean, 0, -0.18)
       ),
@@ -154,6 +157,48 @@ export class Enemy {
     ]);
     this.mergeParts([
       this.part(
+        CreateBox(
+          "left lab-coat lapel",
+          { width: 0.14, height: 0.5, depth: 0.055 },
+          scene
+        ),
+        coat,
+        new Vector3(-0.18, 1.4, -0.285),
+        new Vector3(0, 0, -0.35)
+      ),
+      this.part(
+        CreateBox(
+          "right lab-coat lapel",
+          { width: 0.14, height: 0.5, depth: 0.055 },
+          scene
+        ),
+        coat,
+        new Vector3(0.18, 1.4, -0.285),
+        new Vector3(0, 0, 0.35)
+      ),
+      this.part(
+        CreateBox(
+          "torn coat tail",
+          { width: 0.2, height: 0.35, depth: 0.16 },
+          scene
+        ),
+        coat,
+        new Vector3(-0.2, 0.83, -0.055),
+        new Vector3(0.12, 0, -0.08)
+      ),
+      this.part(
+        CreateBox(
+          "torn coat tail",
+          { width: 0.19, height: 0.31, depth: 0.16 },
+          scene
+        ),
+        coat,
+        new Vector3(0.22, 0.85, -0.04),
+        new Vector3(-0.1, 0, 0.1)
+      ),
+    ]);
+    this.mergeParts([
+      this.part(
         CreateSphere("infected eye", { diameter: 0.075, segments: 6 }, scene),
         eye,
         new Vector3(-0.13, 1.99, -0.385)
@@ -179,6 +224,102 @@ export class Enemy {
         eye,
         new Vector3(-0.01, 1.8, -0.455),
         new Vector3(0.08, 0, 0.08)
+      ),
+    ]);
+    this.mergeParts([
+      this.part(
+        CreateSphere("chest wound", { diameter: 0.2, segments: 6 }, scene),
+        tissue,
+        new Vector3(-0.22, 1.35, -0.295),
+        Vector3.Zero(),
+        new Vector3(1.1, 0.75, 0.22)
+      ),
+      this.part(
+        CreateSphere("shoulder wound", { diameter: 0.15, segments: 6 }, scene),
+        tissue,
+        new Vector3(0.39, 1.55, -0.22),
+        Vector3.Zero(),
+        new Vector3(0.95, 0.8, 0.22)
+      ),
+      this.part(
+        CreateSphere("forearm wound", { diameter: 0.12, segments: 6 }, scene),
+        tissue,
+        new Vector3(-0.48, 1.08, -0.65),
+        Vector3.Zero(),
+        new Vector3(0.7, 0.85, 0.28)
+      ),
+    ]);
+    this.mergeParts([
+      this.part(
+        CreateTorus(
+          "left spectacle frame",
+          { diameter: 0.17, thickness: 0.018, tessellation: 8 },
+          scene
+        ),
+        glasses,
+        new Vector3(-0.13, 2.0, -0.39),
+        new Vector3(0, 0, -0.05),
+        new Vector3(1.12, 0.82, 1)
+      ),
+      this.part(
+        CreateTorus(
+          "right spectacle frame",
+          { diameter: 0.17, thickness: 0.018, tessellation: 8 },
+          scene
+        ),
+        glasses,
+        new Vector3(0.08, 1.98, -0.395),
+        new Vector3(0, 0, 0.05),
+        new Vector3(1.12, 0.82, 1)
+      ),
+      this.part(
+        CreateBox(
+          "spectacle bridge",
+          { width: 0.08, height: 0.018, depth: 0.018 },
+          scene
+        ),
+        glasses,
+        new Vector3(-0.025, 1.99, -0.4)
+      ),
+      this.part(
+        CreateCylinder(
+          "hair tuft",
+          { height: 0.19, diameter: 0.026, tessellation: 4 },
+          scene
+        ),
+        hair,
+        new Vector3(-0.17, 2.24, -0.13),
+        new Vector3(-0.48, 0.05, 0.1)
+      ),
+      this.part(
+        CreateCylinder(
+          "hair tuft",
+          { height: 0.2, diameter: 0.027, tessellation: 4 },
+          scene
+        ),
+        hair,
+        new Vector3(-0.06, 2.27, -0.13),
+        new Vector3(-0.25, 0, -0.1)
+      ),
+      this.part(
+        CreateCylinder(
+          "hair tuft",
+          { height: 0.17, diameter: 0.025, tessellation: 4 },
+          scene
+        ),
+        hair,
+        new Vector3(0.06, 2.25, -0.12),
+        new Vector3(0.3, 0.1, 0.12)
+      ),
+      this.part(
+        CreateBox(
+          "matted side hair",
+          { width: 0.16, height: 0.16, depth: 0.1 },
+          scene
+        ),
+        hair,
+        new Vector3(0.22, 2.04, -0.1),
+        new Vector3(0.15, 0.22, -0.25)
       ),
     ]);
     if (variant === "acid") {

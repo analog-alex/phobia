@@ -86,6 +86,11 @@ export class Sector7 {
     this.createPickup("health", new Vector3(6, 0.3, 19));
     this.createPickup("ammo", new Vector3(-5.7, 0.35, 40));
     this.createPickup("health", new Vector3(5.8, 0.3, 54));
+    // Enemy materials are created up front so every spawned infected shares the
+    // frozen set instead of allocating materials during gameplay.
+    materials.enemy("infected");
+    materials.enemy("runner");
+    materials.enemy("acid");
     this.materials.freeze();
   }
 
