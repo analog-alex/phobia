@@ -9,10 +9,10 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
 import type { EnemyVariant } from "../core/Enemy";
-import type { EnemyModel } from "../types";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 import { Batcher } from "../systems/Batcher";
 import { FacilityLighting } from "../systems/FacilityLighting";
+import type { EnemyModel } from "../types";
 
 export type PickupKind = "health" | "ammo";
 

@@ -1,3 +1,4 @@
+import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import type { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { Scalar } from "@babylonjs/core/Maths/math.scalar";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -8,7 +9,6 @@ import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
-import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import { ENEMY_AI } from "../config/constants";
 import type { EnemyVariant } from "../types";
 import type { MaterialLibrary } from "./MaterialLibrary";
@@ -449,7 +449,9 @@ export class Enemy {
       if (roots.length === 0)
         throw new Error("Model did not contain a root mesh");
 
-      this.visualRoot.getChildMeshes().forEach((mesh) => mesh.dispose());
+      this.visualRoot.getChildMeshes().forEach((mesh) => {
+        mesh.dispose();
+      });
 
       const modelRoot = new TransformNode(
         "explorer infected",
