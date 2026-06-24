@@ -12,33 +12,33 @@ export interface QualitySettings {
 
 export const QUALITY_SETTINGS: Record<QualityTier, QualitySettings> = {
   low: {
-    renderScale: 0.67,
+    renderScale: 0.55,
+    antialiasing: "fxaa",
+    samples: 1,
+    bloom: false,
+    chromaticAberration: false,
+    dynamicLights: 1,
+  },
+  medium: {
+    renderScale: 0.7,
     antialiasing: "fxaa",
     samples: 1,
     bloom: false,
     chromaticAberration: false,
     dynamicLights: 2,
   },
-  medium: {
-    renderScale: 0.8,
+  high: {
+    renderScale: 0.78,
     antialiasing: "fxaa",
     samples: 1,
     bloom: true,
     chromaticAberration: false,
-    dynamicLights: 4,
-  },
-  high: {
-    renderScale: 1,
-    antialiasing: "msaa",
-    samples: 2,
-    bloom: true,
-    chromaticAberration: true,
-    dynamicLights: 6,
+    dynamicLights: 3,
   },
 };
 
 const STORAGE_KEY = "phobia.graphicsPreset";
-const TIERS: QualityTier[] = ["low", "medium", "high"];
+const TIERS: QualityTier[] = ["low", "medium"];
 
 export interface StorageLike {
   getItem(key: string): string | null;
@@ -50,7 +50,7 @@ export class AdaptiveQualityController {
   private fastDuration = 0;
   private cooldown = 0;
 
-  constructor(public tier: QualityTier = "medium") {}
+  constructor(public tier: QualityTier = "low") {}
 
   update(
     frameMs: number,
@@ -86,6 +86,7 @@ export class AdaptiveQualityController {
 
   private shift(direction: -1 | 1): QualityTier | null {
     const currentIndex = TIERS.indexOf(this.tier);
+    if (currentIndex === -1) return null;
     const nextIndex = Math.max(
       0,
       Math.min(TIERS.length - 1, currentIndex + direction)
@@ -101,7 +102,7 @@ export class AdaptiveQualityController {
 
 export class QualityManager {
   private preset: QualityPreset;
-  private readonly adaptive = new AdaptiveQualityController("medium");
+  private readonly adaptive = new AdaptiveQualityController("low");
 
   constructor(
     private readonly applySettings: (
@@ -131,8 +132,8 @@ export class QualityManager {
     this.preset = preset;
     this.storage?.setItem(STORAGE_KEY, preset);
     if (preset === "auto") {
-      this.adaptive.reset("medium");
-      this.applySettings("medium", QUALITY_SETTINGS.medium);
+      this.adaptive.reset("low");
+      this.applySettings("low", QUALITY_SETTINGS.low);
       return;
     }
     this.adaptive.reset(preset);

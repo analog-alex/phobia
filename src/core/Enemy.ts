@@ -8,6 +8,8 @@ import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
+import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
+import { ENEMY_AI } from "../config/constants";
 import type { EnemyVariant } from "../types";
 import type { MaterialLibrary } from "./MaterialLibrary";
 
@@ -23,7 +25,7 @@ export class Enemy {
   private dead = false;
   private readonly offset = new Vector3();
   private readonly direction = new Vector3();
-  private decisionTimer = Math.random() * 0.05;
+  private decisionTimer = Math.random() * ENEMY_AI.DECISION_TICK;
   private distance = Infinity;
   private attackAnimation = 0;
   private readonly gaitOffset = Math.random() * Math.PI * 2;
@@ -366,7 +368,7 @@ export class Enemy {
     this.animationTime += delta * (this.variant === "runner" ? 9 : 5);
     this.decisionTimer -= delta;
     if (this.decisionTimer <= 0) {
-      this.decisionTimer += 0.05;
+      this.decisionTimer += ENEMY_AI.DECISION_TICK;
       playerPosition.subtractToRef(this.root.position, this.offset);
       this.distance = Math.hypot(this.offset.x, this.offset.z);
       if (this.distance > 0)
@@ -432,6 +434,54 @@ export class Enemy {
       return true;
     }
     return false;
+  }
+
+  async replaceWithModel(modelUrl: string): Promise<void> {
+    try {
+      await import("@babylonjs/loaders/glTF");
+      const result = await SceneLoader.ImportMeshAsync(
+        "",
+        "",
+        modelUrl,
+        this.root.getScene()
+      );
+      const roots = result.meshes.filter((mesh) => !mesh.parent);
+      if (roots.length === 0)
+        throw new Error("Model did not contain a root mesh");
+
+      this.visualRoot.getChildMeshes().forEach((mesh) => mesh.dispose());
+
+      const modelRoot = new TransformNode(
+        "explorer infected",
+        this.root.getScene()
+      );
+      modelRoot.parent = this.visualRoot;
+      roots.forEach((mesh) => {
+        mesh.parent = modelRoot;
+      });
+
+      let minY = Infinity;
+      let maxY = -Infinity;
+      modelRoot.getChildMeshes().forEach((mesh) => {
+        mesh.computeWorldMatrix(true);
+        const bounds = mesh.getBoundingInfo().boundingBox;
+        minY = Math.min(minY, bounds.minimumWorld.y);
+        maxY = Math.max(maxY, bounds.maximumWorld.y);
+        mesh.isPickable = true;
+        mesh.metadata = { enemy: this };
+      });
+      const height = maxY - minY;
+      if (!Number.isFinite(height) || height <= 0) {
+        modelRoot.dispose();
+        throw new Error("Model had no renderable bounds");
+      }
+      const scale = 2.15 / height;
+      modelRoot.scaling.setAll(scale);
+      modelRoot.position.y = -minY * scale;
+      modelRoot.rotation.y = Math.PI;
+    } catch (error) {
+      console.warn("Could not load explorer infected model", error);
+    }
   }
 
   private part(

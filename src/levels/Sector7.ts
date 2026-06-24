@@ -9,6 +9,7 @@ import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
 import type { EnemyVariant } from "../core/Enemy";
+import type { EnemyModel } from "../types";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 import { Batcher } from "../systems/Batcher";
 import { FacilityLighting } from "../systems/FacilityLighting";
@@ -25,6 +26,7 @@ export interface Pickup {
 interface EnemySpawn {
   position: Vector3;
   variant: EnemyVariant;
+  model?: EnemyModel;
 }
 
 export class Sector7 {
@@ -35,7 +37,7 @@ export class Sector7 {
     { position: new Vector3(4.5, 0, 8), variant: "runner" },
     { position: new Vector3(-4, 0, 33), variant: "infected" },
     { position: new Vector3(4.8, 0, 44), variant: "runner" },
-    { position: new Vector3(0, 0, 61), variant: "acid" },
+    { position: new Vector3(0, 0, 61), variant: "acid", model: "explorer" },
   ];
   readonly extractionConsole: Mesh;
   private readonly batcher = new Batcher();
@@ -663,7 +665,7 @@ export class Sector7 {
     mesh.position.copyFrom(position);
     mesh.checkCollisions = true;
     mesh.isPickable = pickable;
-    mesh.visibility = 0;
+    mesh.isVisible = false;
     mesh.metadata = { collision: true };
     mesh.freezeWorldMatrix();
   }
