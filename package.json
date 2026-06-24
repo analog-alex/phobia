@@ -12,7 +12,8 @@
     "format": "biome format --write ."
   },
   "dependencies": {
-    "@babylonjs/core": "^8.0.0"
+    "@babylonjs/core": "^8.0.0",
+    "@babylonjs/loaders": "^8.56.2"
   },
   "devDependencies": {
     "@biomejs/biome": "^2.5.0",

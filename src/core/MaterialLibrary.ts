@@ -97,7 +97,15 @@ export class MaterialLibrary {
   readonly acid = this.emissive("volatile acid", new Color3(1.4, 1.7, 0.02));
   private readonly enemySets = new Map<
     EnemyVariant,
-    { uniform: PBRMaterial; skin: PBRMaterial; eye: PBRMaterial }
+    {
+      coat: PBRMaterial;
+      pants: PBRMaterial;
+      skin: PBRMaterial;
+      tissue: PBRMaterial;
+      eye: PBRMaterial;
+      hair: PBRMaterial;
+      glasses: PBRMaterial;
+    }
   >();
 
   constructor(private readonly scene: Scene) {
@@ -106,22 +114,30 @@ export class MaterialLibrary {
   }
 
   enemy(variant: EnemyVariant): {
-    uniform: PBRMaterial;
+    coat: PBRMaterial;
+    pants: PBRMaterial;
     skin: PBRMaterial;
+    tissue: PBRMaterial;
     eye: PBRMaterial;
+    hair: PBRMaterial;
+    glasses: PBRMaterial;
   } {
     const cached = this.enemySets.get(variant);
     if (cached) return cached;
     const set = {
-      uniform: this.pbr(
-        `uniform-${variant}`,
-        variant === "runner"
-          ? new Color3(0.115, 0.16, 0.12)
-          : variant === "acid"
-            ? new Color3(0.18, 0.2, 0.055)
-            : new Color3(0.105, 0.14, 0.145),
+      coat: this.pbr(
+        `torn lab coat-${variant}`,
+        variant === "acid"
+          ? new Color3(0.46, 0.48, 0.35)
+          : new Color3(0.7, 0.72, 0.67),
         0.05,
-        0.94
+        0.88
+      ),
+      pants: this.pbr(
+        `lab trousers-${variant}`,
+        new Color3(0.055, 0.07, 0.075),
+        0.03,
+        0.92
       ),
       skin: this.pbr(
         `skin-${variant}`,
@@ -149,6 +165,25 @@ export class MaterialLibrary {
               0.76,
               new Color3(1.15, 0.018, 0.008)
             ),
+      tissue: this.pbr(
+        `exposed tissue-${variant}`,
+        new Color3(0.24, 0.012, 0.008),
+        0,
+        0.7,
+        new Color3(0.16, 0.004, 0.002)
+      ),
+      hair: this.pbr(
+        `matted hair-${variant}`,
+        new Color3(0.012, 0.016, 0.014),
+        0.05,
+        0.96
+      ),
+      glasses: this.pbr(
+        `broken spectacles-${variant}`,
+        new Color3(0.12, 0.075, 0.035),
+        0.65,
+        0.34
+      ),
     };
     this.enemySets.set(variant, set);
     return set;

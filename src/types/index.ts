@@ -9,6 +9,7 @@ import type { Enemy } from "../core/Enemy";
 export type PickupKind = "health" | "ammo";
 
 export type EnemyVariant = "infected" | "runner" | "acid";
+export type EnemyModel = "explorer";
 
 /** Discriminated tags for mesh.metadata (kept simple for perf + Babylon pick) */
 export type EntityMetadata =

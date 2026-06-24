@@ -29,9 +29,9 @@ export const PLAYER = {
 } as const;
 
 export const PHYSICS = {
-  /** 30 Hz ground check */
-  GROUND_CHECK_HZ: 30,
-  GROUND_CHECK_INTERVAL: 1 / 30,
+  /** 20 Hz ground check */
+  GROUND_CHECK_HZ: 20,
+  GROUND_CHECK_INTERVAL: 1 / 20,
   /** Downward ray length for ground probe */
   GROUND_RAY_LENGTH: 2.96,
   /** Max distance to consider grounded */
@@ -87,8 +87,8 @@ export const COMBAT = {
 } as const;
 
 export const ENEMY_AI = {
-  /** 20 Hz decision tick */
-  DECISION_TICK: 0.05,
+  /** 10 Hz decision tick */
+  DECISION_TICK: 0.1,
   /** Normal speed */
   SPEED: 1.45,
   /** Runner speed */

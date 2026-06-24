@@ -12,6 +12,7 @@ import type { EnemyVariant } from "../core/Enemy";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 import { Batcher } from "../systems/Batcher";
 import { FacilityLighting } from "../systems/FacilityLighting";
+import type { EnemyModel } from "../types";
 
 export type PickupKind = "health" | "ammo";
 
@@ -25,6 +26,7 @@ export interface Pickup {
 interface EnemySpawn {
   position: Vector3;
   variant: EnemyVariant;
+  model?: EnemyModel;
 }
 
 export class Sector7 {
@@ -35,7 +37,7 @@ export class Sector7 {
     { position: new Vector3(4.5, 0, 8), variant: "runner" },
     { position: new Vector3(-4, 0, 33), variant: "infected" },
     { position: new Vector3(4.8, 0, 44), variant: "runner" },
-    { position: new Vector3(0, 0, 61), variant: "acid" },
+    { position: new Vector3(0, 0, 61), variant: "acid", model: "explorer" },
   ];
   readonly extractionConsole: Mesh;
   private readonly batcher = new Batcher();
@@ -86,6 +88,11 @@ export class Sector7 {
     this.createPickup("health", new Vector3(6, 0.3, 19));
     this.createPickup("ammo", new Vector3(-5.7, 0.35, 40));
     this.createPickup("health", new Vector3(5.8, 0.3, 54));
+    // Enemy materials are created up front so every spawned infected shares the
+    // frozen set instead of allocating materials during gameplay.
+    materials.enemy("infected");
+    materials.enemy("runner");
+    materials.enemy("acid");
     this.materials.freeze();
   }
 
@@ -658,7 +665,7 @@ export class Sector7 {
     mesh.position.copyFrom(position);
     mesh.checkCollisions = true;
     mesh.isPickable = pickable;
-    mesh.visibility = 0;
+    mesh.isVisible = false;
     mesh.metadata = { collision: true };
     mesh.freezeWorldMatrix();
   }

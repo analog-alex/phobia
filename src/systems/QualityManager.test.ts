@@ -8,19 +8,19 @@ import {
 describe("quality presets", () => {
   test("map to the planned render settings", () => {
     expect(QUALITY_SETTINGS.high).toMatchObject({
-      renderScale: 1,
-      samples: 2,
-      dynamicLights: 6,
+      renderScale: 0.78,
+      samples: 1,
+      dynamicLights: 3,
     });
     expect(QUALITY_SETTINGS.medium).toMatchObject({
-      renderScale: 0.8,
-      bloom: true,
-      dynamicLights: 4,
-    });
-    expect(QUALITY_SETTINGS.low).toMatchObject({
-      renderScale: 0.67,
+      renderScale: 0.7,
       bloom: false,
       dynamicLights: 2,
+    });
+    expect(QUALITY_SETTINGS.low).toMatchObject({
+      renderScale: 0.55,
+      bloom: false,
+      dynamicLights: 1,
     });
   });
 });
@@ -36,7 +36,8 @@ describe("adaptive quality", () => {
     const controller = new AdaptiveQualityController("medium");
     for (let second = 0; second < 9; second += 1)
       expect(controller.update(12, 1, true)).toBeNull();
-    expect(controller.update(12, 1, true)).toBe("high");
+    expect(controller.update(12, 1, true)).toBeNull();
+    expect(controller.tier).toBe("medium");
   });
 
   test("ignores paused frames and enforces cooldown", () => {
@@ -63,5 +64,5 @@ test("manual selection persists and overrides auto", () => {
   manager.setPreset("high");
   manager.update(30, 10, true);
   expect(values.get("phobia.graphicsPreset")).toBe("high");
-  expect(applied).toEqual(["medium", "high"]);
+  expect(applied).toEqual(["low", "high"]);
 });

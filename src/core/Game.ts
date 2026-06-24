@@ -30,6 +30,11 @@ import { MaterialLibrary } from "./MaterialLibrary";
 import { PlayerController } from "./PlayerController";
 import { WeaponSystem } from "./WeaponSystem";
 
+const explorerModelUrl = new URL(
+  "../../assests/Meshy_AI_Steampunk_Explorer_0621142735_ktx2_lite.glb",
+  import.meta.url
+).href;
+
 export class Game {
   private readonly engine: Engine;
   private readonly scene: Scene;
@@ -123,11 +128,15 @@ export class Game {
     this.player.attachControl(this.canvas);
     this.scene.activeCamera = this.camera;
     this.configureLightingAndPostProcessing();
+    this.quality.initialize();
+    this.updateQualityButtons();
     this.level = new Sector7(this.scene, this.materials);
-    this.level.enemySpawns.forEach(({ position, variant }) => {
-      this.enemies.push(
-        new Enemy(this.scene, position, variant, this.materials)
-      );
+    const loadExplorerModel = this.quality.getTier() === "high";
+    this.level.enemySpawns.forEach(({ position, variant, model }) => {
+      const enemy = new Enemy(this.scene, position, variant, this.materials);
+      this.enemies.push(enemy);
+      if (model === "explorer" && loadExplorerModel)
+        void enemy.replaceWithModel(explorerModelUrl);
     });
     this.weaponSys.create(this.camera);
     this.effects.createImpactPool();
@@ -135,9 +144,6 @@ export class Game {
     this.bindEvents();
     this.hud.setHealth(this.health);
     this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
-
-    this.quality.initialize();
-    this.updateQualityButtons();
     this.scene.onBeforeRenderObservable.add(() => this.update());
     this.scene.onAfterRenderObservable.add(() => {
       const frameMs = this.engine.getDeltaTime();

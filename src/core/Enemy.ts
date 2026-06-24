@@ -1,11 +1,15 @@
+import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import type { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { Scalar } from "@babylonjs/core/Maths/math.scalar";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
+import { CreateTorus } from "@babylonjs/core/Meshes/Builders/torusBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
+import { ENEMY_AI } from "../config/constants";
 import type { EnemyVariant } from "../types";
 import type { MaterialLibrary } from "./MaterialLibrary";
 
@@ -21,7 +25,7 @@ export class Enemy {
   private dead = false;
   private readonly offset = new Vector3();
   private readonly direction = new Vector3();
-  private decisionTimer = Math.random() * 0.05;
+  private decisionTimer = Math.random() * ENEMY_AI.DECISION_TICK;
   private distance = Infinity;
   private attackAnimation = 0;
   private readonly gaitOffset = Math.random() * Math.PI * 2;
@@ -40,7 +44,8 @@ export class Enemy {
     this.visualRoot = new TransformNode(`enemy-visual-${variant}`, scene);
     this.visualRoot.parent = this.root;
 
-    const { uniform, skin, eye } = materials.enemy(variant);
+    const { coat, pants, skin, tissue, eye, hair, glasses } =
+      materials.enemy(variant);
 
     const runner = variant === "runner";
     const lean = runner ? -0.31 : -0.2;
@@ -51,7 +56,7 @@ export class Enemy {
           { width: 0.76, height: 0.98, depth: 0.42 },
           scene
         ),
-        uniform,
+        coat,
         new Vector3(0.03, 1.22, -0.04),
         new Vector3(lean, 0, -0.07)
       ),
@@ -61,7 +66,7 @@ export class Enemy {
           { width: 0.28, height: 0.92, depth: 0.31 },
           scene
         ),
-        uniform,
+        pants,
         new Vector3(-0.2, 0.46, 0.03),
         new Vector3(0.08, 0, -0.04)
       ),
@@ -71,7 +76,7 @@ export class Enemy {
           { width: 0.27, height: 0.88, depth: 0.3 },
           scene
         ),
-        uniform,
+        pants,
         new Vector3(0.21, 0.43, -0.02),
         new Vector3(-0.12, 0, 0.08)
       ),
@@ -81,7 +86,7 @@ export class Enemy {
           { width: 0.3, height: 0.32, depth: 0.44 },
           scene
         ),
-        uniform,
+        coat,
         new Vector3(-0.43, 1.54, -0.08),
         new Vector3(lean, 0, -0.18)
       ),
@@ -154,6 +159,48 @@ export class Enemy {
     ]);
     this.mergeParts([
       this.part(
+        CreateBox(
+          "left lab-coat lapel",
+          { width: 0.14, height: 0.5, depth: 0.055 },
+          scene
+        ),
+        coat,
+        new Vector3(-0.18, 1.4, -0.285),
+        new Vector3(0, 0, -0.35)
+      ),
+      this.part(
+        CreateBox(
+          "right lab-coat lapel",
+          { width: 0.14, height: 0.5, depth: 0.055 },
+          scene
+        ),
+        coat,
+        new Vector3(0.18, 1.4, -0.285),
+        new Vector3(0, 0, 0.35)
+      ),
+      this.part(
+        CreateBox(
+          "torn coat tail",
+          { width: 0.2, height: 0.35, depth: 0.16 },
+          scene
+        ),
+        coat,
+        new Vector3(-0.2, 0.83, -0.055),
+        new Vector3(0.12, 0, -0.08)
+      ),
+      this.part(
+        CreateBox(
+          "torn coat tail",
+          { width: 0.19, height: 0.31, depth: 0.16 },
+          scene
+        ),
+        coat,
+        new Vector3(0.22, 0.85, -0.04),
+        new Vector3(-0.1, 0, 0.1)
+      ),
+    ]);
+    this.mergeParts([
+      this.part(
         CreateSphere("infected eye", { diameter: 0.075, segments: 6 }, scene),
         eye,
         new Vector3(-0.13, 1.99, -0.385)
@@ -179,6 +226,102 @@ export class Enemy {
         eye,
         new Vector3(-0.01, 1.8, -0.455),
         new Vector3(0.08, 0, 0.08)
+      ),
+    ]);
+    this.mergeParts([
+      this.part(
+        CreateSphere("chest wound", { diameter: 0.2, segments: 6 }, scene),
+        tissue,
+        new Vector3(-0.22, 1.35, -0.295),
+        Vector3.Zero(),
+        new Vector3(1.1, 0.75, 0.22)
+      ),
+      this.part(
+        CreateSphere("shoulder wound", { diameter: 0.15, segments: 6 }, scene),
+        tissue,
+        new Vector3(0.39, 1.55, -0.22),
+        Vector3.Zero(),
+        new Vector3(0.95, 0.8, 0.22)
+      ),
+      this.part(
+        CreateSphere("forearm wound", { diameter: 0.12, segments: 6 }, scene),
+        tissue,
+        new Vector3(-0.48, 1.08, -0.65),
+        Vector3.Zero(),
+        new Vector3(0.7, 0.85, 0.28)
+      ),
+    ]);
+    this.mergeParts([
+      this.part(
+        CreateTorus(
+          "left spectacle frame",
+          { diameter: 0.17, thickness: 0.018, tessellation: 8 },
+          scene
+        ),
+        glasses,
+        new Vector3(-0.13, 2.0, -0.39),
+        new Vector3(0, 0, -0.05),
+        new Vector3(1.12, 0.82, 1)
+      ),
+      this.part(
+        CreateTorus(
+          "right spectacle frame",
+          { diameter: 0.17, thickness: 0.018, tessellation: 8 },
+          scene
+        ),
+        glasses,
+        new Vector3(0.08, 1.98, -0.395),
+        new Vector3(0, 0, 0.05),
+        new Vector3(1.12, 0.82, 1)
+      ),
+      this.part(
+        CreateBox(
+          "spectacle bridge",
+          { width: 0.08, height: 0.018, depth: 0.018 },
+          scene
+        ),
+        glasses,
+        new Vector3(-0.025, 1.99, -0.4)
+      ),
+      this.part(
+        CreateCylinder(
+          "hair tuft",
+          { height: 0.19, diameter: 0.026, tessellation: 4 },
+          scene
+        ),
+        hair,
+        new Vector3(-0.17, 2.24, -0.13),
+        new Vector3(-0.48, 0.05, 0.1)
+      ),
+      this.part(
+        CreateCylinder(
+          "hair tuft",
+          { height: 0.2, diameter: 0.027, tessellation: 4 },
+          scene
+        ),
+        hair,
+        new Vector3(-0.06, 2.27, -0.13),
+        new Vector3(-0.25, 0, -0.1)
+      ),
+      this.part(
+        CreateCylinder(
+          "hair tuft",
+          { height: 0.17, diameter: 0.025, tessellation: 4 },
+          scene
+        ),
+        hair,
+        new Vector3(0.06, 2.25, -0.12),
+        new Vector3(0.3, 0.1, 0.12)
+      ),
+      this.part(
+        CreateBox(
+          "matted side hair",
+          { width: 0.16, height: 0.16, depth: 0.1 },
+          scene
+        ),
+        hair,
+        new Vector3(0.22, 2.04, -0.1),
+        new Vector3(0.15, 0.22, -0.25)
       ),
     ]);
     if (variant === "acid") {
@@ -225,7 +368,7 @@ export class Enemy {
     this.animationTime += delta * (this.variant === "runner" ? 9 : 5);
     this.decisionTimer -= delta;
     if (this.decisionTimer <= 0) {
-      this.decisionTimer += 0.05;
+      this.decisionTimer += ENEMY_AI.DECISION_TICK;
       playerPosition.subtractToRef(this.root.position, this.offset);
       this.distance = Math.hypot(this.offset.x, this.offset.z);
       if (this.distance > 0)
@@ -291,6 +434,56 @@ export class Enemy {
       return true;
     }
     return false;
+  }
+
+  async replaceWithModel(modelUrl: string): Promise<void> {
+    try {
+      await import("@babylonjs/loaders/glTF");
+      const result = await SceneLoader.ImportMeshAsync(
+        "",
+        "",
+        modelUrl,
+        this.root.getScene()
+      );
+      const roots = result.meshes.filter((mesh) => !mesh.parent);
+      if (roots.length === 0)
+        throw new Error("Model did not contain a root mesh");
+
+      this.visualRoot.getChildMeshes().forEach((mesh) => {
+        mesh.dispose();
+      });
+
+      const modelRoot = new TransformNode(
+        "explorer infected",
+        this.root.getScene()
+      );
+      modelRoot.parent = this.visualRoot;
+      roots.forEach((mesh) => {
+        mesh.parent = modelRoot;
+      });
+
+      let minY = Infinity;
+      let maxY = -Infinity;
+      modelRoot.getChildMeshes().forEach((mesh) => {
+        mesh.computeWorldMatrix(true);
+        const bounds = mesh.getBoundingInfo().boundingBox;
+        minY = Math.min(minY, bounds.minimumWorld.y);
+        maxY = Math.max(maxY, bounds.maximumWorld.y);
+        mesh.isPickable = true;
+        mesh.metadata = { enemy: this };
+      });
+      const height = maxY - minY;
+      if (!Number.isFinite(height) || height <= 0) {
+        modelRoot.dispose();
+        throw new Error("Model had no renderable bounds");
+      }
+      const scale = 2.15 / height;
+      modelRoot.scaling.setAll(scale);
+      modelRoot.position.y = -minY * scale;
+      modelRoot.rotation.y = Math.PI;
+    } catch (error) {
+      console.warn("Could not load explorer infected model", error);
+    }
   }
 
   private part(
