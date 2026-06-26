@@ -82,9 +82,7 @@ export class Effects {
   }
 
   createImpact(position: Vector3, organic: boolean, acid = false): void {
-    const entry =
-      this.impacts.find((impact) => !impact.mesh.isEnabled()) ??
-      this.impacts[0];
+    const entry = this.pickReusableImpact();
     entry.mesh.position.copyFrom(position);
     entry.mesh.material = acid
       ? this.materials.acid
@@ -101,9 +99,7 @@ export class Effects {
     cameraPosition: Vector3,
     onThrow: (origin: Vector3) => void
   ): void {
-    const projectile =
-      this.acidProjectiles.find((entry) => !entry.active) ??
-      this.acidProjectiles[0];
+    const projectile = this.pickReusableProjectile();
     const distance = Vector3.Distance(origin, cameraPosition);
     const flightTime = Math.max(
       EFFECTS.ACID_FLIGHT_MIN,
@@ -188,6 +184,22 @@ export class Effects {
   private disableAcidProjectile(projectile: AcidProjectile): void {
     projectile.active = false;
     projectile.mesh.setEnabled(false);
+  }
+
+  private pickReusableImpact(): ImpactEntry {
+    const inactive = this.impacts.find((impact) => !impact.mesh.isEnabled());
+    if (inactive) return inactive;
+    return this.impacts.reduce((oldest, impact) =>
+      impact.expiresAt < oldest.expiresAt ? impact : oldest
+    );
+  }
+
+  private pickReusableProjectile(): AcidProjectile {
+    const inactive = this.acidProjectiles.find((entry) => !entry.active);
+    if (inactive) return inactive;
+    return this.acidProjectiles.reduce((oldest, entry) =>
+      entry.age > oldest.age ? entry : oldest
+    );
   }
 
   getAcidProjectiles(): readonly AcidProjectile[] {

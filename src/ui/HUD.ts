@@ -10,6 +10,9 @@ export class HUD {
   private readonly crosshair = this.get("crosshair");
   private readonly damageFlash = this.get("damage-flash");
   private messageTimer = 0;
+  private hitmarkerTimer = 0;
+  private crosshairTimer = 0;
+  private damageFlashTimer = 0;
   private lastHealth = -1;
   private lastClip = -1;
   private lastReserve = -1;
@@ -48,28 +51,45 @@ export class HUD {
   }
 
   flashMessage(value: string, duration = 1800): void {
-    window.clearTimeout(this.messageTimer);
     this.message.textContent = value;
     this.message.classList.add("visible");
-    this.messageTimer = window.setTimeout(
-      () => this.message.classList.remove("visible"),
-      duration
-    );
+    this.messageTimer = duration / 1000;
   }
 
   showHit(): void {
     this.hitmarker.classList.add("visible");
-    window.setTimeout(() => this.hitmarker.classList.remove("visible"), 80);
+    this.hitmarkerTimer = 0.08;
   }
 
   kickCrosshair(): void {
     this.crosshair.classList.add("kick");
-    window.setTimeout(() => this.crosshair.classList.remove("kick"), 85);
+    this.crosshairTimer = 0.085;
   }
 
   flashDamage(): void {
     this.damageFlash.classList.add("active");
-    window.setTimeout(() => this.damageFlash.classList.remove("active"), 90);
+    this.damageFlashTimer = 0.09;
+  }
+
+  update(delta: number): void {
+    if (this.messageTimer > 0) {
+      this.messageTimer = Math.max(0, this.messageTimer - delta);
+      if (this.messageTimer === 0) this.message.classList.remove("visible");
+    }
+    if (this.hitmarkerTimer > 0) {
+      this.hitmarkerTimer = Math.max(0, this.hitmarkerTimer - delta);
+      if (this.hitmarkerTimer === 0)
+        this.hitmarker.classList.remove("visible");
+    }
+    if (this.crosshairTimer > 0) {
+      this.crosshairTimer = Math.max(0, this.crosshairTimer - delta);
+      if (this.crosshairTimer === 0) this.crosshair.classList.remove("kick");
+    }
+    if (this.damageFlashTimer > 0) {
+      this.damageFlashTimer = Math.max(0, this.damageFlashTimer - delta);
+      if (this.damageFlashTimer === 0)
+        this.damageFlash.classList.remove("active");
+    }
   }
 
   private get(id: string): HTMLElement {

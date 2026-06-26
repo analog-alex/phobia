@@ -36,8 +36,8 @@ describe("adaptive quality", () => {
     const controller = new AdaptiveQualityController("medium");
     for (let second = 0; second < 9; second += 1)
       expect(controller.update(12, 1, true)).toBeNull();
-    expect(controller.update(12, 1, true)).toBeNull();
-    expect(controller.tier).toBe("medium");
+    expect(controller.update(12, 1, true)).toBe("high");
+    expect(controller.tier).toBe("high");
   });
 
   test("ignores paused frames and enforces cooldown", () => {

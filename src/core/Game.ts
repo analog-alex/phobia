@@ -58,6 +58,7 @@ export class Game {
   private health: number = COMBAT.MAX_HEALTH;
   private kills = 0;
   private startTime = 0;
+  private lastFrameMs = 0;
   private currentSettings: QualitySettings;
   private started = false;
   private paused = false;
@@ -146,8 +147,10 @@ export class Game {
     this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
     this.scene.onBeforeRenderObservable.add(() => this.update());
     this.scene.onAfterRenderObservable.add(() => {
-      const frameMs = this.engine.getDeltaTime();
-      this.diagnostics.update(frameMs, Math.min(0.033, frameMs / 1000));
+      this.diagnostics.update(
+        this.lastFrameMs,
+        Math.min(0.033, this.lastFrameMs / 1000)
+      );
     });
     this.engine.runRenderLoop(() => this.scene.render());
     window.addEventListener("resize", () => this.engine.resize());
@@ -263,12 +266,15 @@ export class Game {
   }
 
   private update(): void {
-    const delta = Math.min(0.033, this.engine.getDeltaTime() / 1000);
     const frameMs = this.engine.getDeltaTime();
+    const delta = Math.min(0.033, frameMs / 1000);
+    this.lastFrameMs = frameMs;
     const active = this.isGameplayActive();
     this.quality.update(frameMs, delta, active);
-    this.effects.updateImpactPool();
     if (!active || !this.level) return;
+    this.hud.update(delta);
+    this.audio.update(delta);
+    this.effects.updateImpactPool();
     this.player.syncCameraHeight();
 
     const moving =
