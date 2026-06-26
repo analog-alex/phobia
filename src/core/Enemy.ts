@@ -1,4 +1,4 @@
-import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
+import type { AssetContainer } from "@babylonjs/core/assetContainer";
 import type { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { Scalar } from "@babylonjs/core/Maths/math.scalar";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
@@ -436,30 +436,23 @@ export class Enemy {
     return false;
   }
 
-  async replaceWithModel(modelUrl: string): Promise<void> {
+  replaceWithModel(model: AssetContainer): void {
     try {
-      await import("@babylonjs/loaders/glTF");
-      const result = await SceneLoader.ImportMeshAsync(
-        "",
-        "",
-        modelUrl,
-        this.root.getScene()
+      const entries = model.instantiateModelsToScene(
+        (sourceName) => `zombie-${this.variant}-${sourceName}`,
+        false
       );
-      const roots = result.meshes.filter((mesh) => !mesh.parent);
-      if (roots.length === 0)
-        throw new Error("Model did not contain a root mesh");
+      if (entries.rootNodes.length === 0)
+        throw new Error("Model did not create root nodes");
 
       this.visualRoot.getChildMeshes().forEach((mesh) => {
         mesh.dispose();
       });
 
-      const modelRoot = new TransformNode(
-        "explorer infected",
-        this.root.getScene()
-      );
+      const modelRoot = new TransformNode("meshy zombie", this.root.getScene());
       modelRoot.parent = this.visualRoot;
-      roots.forEach((mesh) => {
-        mesh.parent = modelRoot;
+      entries.rootNodes.forEach((node) => {
+        node.parent = modelRoot;
       });
 
       let minY = Infinity;
@@ -482,7 +475,7 @@ export class Enemy {
       modelRoot.position.y = -minY * scale;
       modelRoot.rotation.y = Math.PI;
     } catch (error) {
-      console.warn("Could not load explorer infected model", error);
+      console.warn("Could not instantiate zombie model", error);
     }
   }
 

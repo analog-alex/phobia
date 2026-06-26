@@ -1,8 +1,10 @@
 import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
 import "@babylonjs/core/Collisions/collisionCoordinator";
+
+import type { AssetContainer } from "@babylonjs/core/assetContainer";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
-
+import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { BloomEffect } from "@babylonjs/core/PostProcesses/bloomEffect";
@@ -30,8 +32,12 @@ import { MaterialLibrary } from "./MaterialLibrary";
 import { PlayerController } from "./PlayerController";
 import { WeaponSystem } from "./WeaponSystem";
 
-const explorerModelUrl = new URL(
-  "../../assests/Meshy_AI_Steampunk_Explorer_0621142735_ktx2_lite.glb",
+const zombieModelUrl = new URL(
+  "../../assests/Meshy_AI__0626205329_optimized.glb",
+  import.meta.url
+).href;
+const acidZombieModelUrl = new URL(
+  "../../assests/Meshy_AI_Neon_Plague_Chemist_0626210338_optimized.glb",
   import.meta.url
 ).href;
 
@@ -58,6 +64,7 @@ export class Game {
   private health: number = COMBAT.MAX_HEALTH;
   private kills = 0;
   private startTime = 0;
+  private lastFrameMs = 0;
   private currentSettings: QualitySettings;
   private started = false;
   private paused = false;
@@ -131,12 +138,16 @@ export class Game {
     this.quality.initialize();
     this.updateQualityButtons();
     this.level = new Sector7(this.scene, this.materials);
-    const loadExplorerModel = this.quality.getTier() === "high";
-    this.level.enemySpawns.forEach(({ position, variant, model }) => {
+    const [zombieModel, acidZombieModel] = await Promise.all([
+      this.loadEnemyModel(zombieModelUrl, "zombie"),
+      this.loadEnemyModel(acidZombieModelUrl, "acid zombie"),
+    ]);
+    this.level.enemySpawns.forEach(({ position, variant }) => {
       const enemy = new Enemy(this.scene, position, variant, this.materials);
       this.enemies.push(enemy);
-      if (model === "explorer" && loadExplorerModel)
-        void enemy.replaceWithModel(explorerModelUrl);
+      const model =
+        variant === "acid" ? (acidZombieModel ?? zombieModel) : zombieModel;
+      if (model) enemy.replaceWithModel(model);
     });
     this.weaponSys.create(this.camera);
     this.effects.createImpactPool();
@@ -146,8 +157,10 @@ export class Game {
     this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
     this.scene.onBeforeRenderObservable.add(() => this.update());
     this.scene.onAfterRenderObservable.add(() => {
-      const frameMs = this.engine.getDeltaTime();
-      this.diagnostics.update(frameMs, Math.min(0.033, frameMs / 1000));
+      this.diagnostics.update(
+        this.lastFrameMs,
+        Math.min(0.033, this.lastFrameMs / 1000)
+      );
     });
     this.engine.runRenderLoop(() => this.scene.render());
     window.addEventListener("resize", () => this.engine.resize());
@@ -184,6 +197,27 @@ export class Game {
       this.camera,
       true
     );
+  }
+
+  private async loadEnemyModel(
+    modelUrl: string,
+    label: string
+  ): Promise<AssetContainer | undefined> {
+    try {
+      await import("@babylonjs/loaders/glTF");
+      const container = await SceneLoader.LoadAssetContainerAsync(
+        "",
+        modelUrl,
+        this.scene
+      );
+      container.materials.forEach((material) => {
+        material.freeze();
+      });
+      return container;
+    } catch (error) {
+      console.warn(`Could not load ${label} model; using fallback`, error);
+      return undefined;
+    }
   }
 
   private bindEvents(): void {
@@ -263,12 +297,15 @@ export class Game {
   }
 
   private update(): void {
-    const delta = Math.min(0.033, this.engine.getDeltaTime() / 1000);
     const frameMs = this.engine.getDeltaTime();
+    const delta = Math.min(0.033, frameMs / 1000);
+    this.lastFrameMs = frameMs;
     const active = this.isGameplayActive();
     this.quality.update(frameMs, delta, active);
-    this.effects.updateImpactPool();
     if (!active || !this.level) return;
+    this.hud.update(delta);
+    this.audio.update(delta);
+    this.effects.updateImpactPool();
     this.player.syncCameraHeight();
 
     const moving =

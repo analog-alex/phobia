@@ -3,6 +3,10 @@ export class AudioSystem {
   private master?: GainNode;
   private shotNoise?: AudioBuffer;
   private ambientStarted = false;
+  private readonly delayed = new Set<{
+    remaining: number;
+    run: () => void;
+  }>();
 
   async resume(): Promise<void> {
     if (!this.context) {
@@ -29,7 +33,7 @@ export class AudioSystem {
 
   reload(): void {
     this.tone(270, 0.04, "square", 0.08, 190);
-    window.setTimeout(() => this.tone(410, 0.055, "square", 0.09, 260), 520);
+    this.schedule(0.52, () => this.tone(410, 0.055, "square", 0.09, 260));
   }
 
   hit(): void {
@@ -46,16 +50,25 @@ export class AudioSystem {
 
   pickup(): void {
     this.tone(460, 0.06, "sine", 0.09, 680);
-    window.setTimeout(() => this.tone(680, 0.08, "sine", 0.07, 900), 65);
+    this.schedule(0.065, () => this.tone(680, 0.08, "sine", 0.07, 900));
   }
 
   success(): void {
     [260, 390, 520].forEach((frequency, index) => {
-      window.setTimeout(
-        () => this.tone(frequency, 0.35, "sine", 0.07, frequency * 1.1),
-        index * 160
+      this.schedule(index * 0.16, () =>
+        this.tone(frequency, 0.35, "sine", 0.07, frequency * 1.1)
       );
     });
+  }
+
+  update(delta: number): void {
+    if (this.delayed.size === 0) return;
+    for (const entry of [...this.delayed]) {
+      entry.remaining -= delta;
+      if (entry.remaining > 0) continue;
+      this.delayed.delete(entry);
+      entry.run();
+    }
   }
 
   private startAmbient(): void {
@@ -137,5 +150,9 @@ export class AudioSystem {
     for (let index = 0; index < sampleCount; index += 1)
       channel[index] = Math.random() * 2 - 1;
     return buffer;
+  }
+
+  private schedule(delaySeconds: number, run: () => void): void {
+    this.delayed.add({ remaining: delaySeconds, run });
   }
 }

@@ -20,6 +20,8 @@ export class WeaponSystem {
   private weaponKick = 0;
   private reloading = false;
   private reloadTime = 0;
+  private muzzleFlashRemaining = 0;
+  private muzzleFlashOff?: () => void;
 
   private clip: number;
   private reserve: number;
@@ -104,6 +106,17 @@ export class WeaponSystem {
   update(delta: number, moving: boolean): void {
     if (!this.weapon) return;
     this.weaponKick = Math.max(0, this.weaponKick - delta * WEAPON.KICK_DECAY);
+    if (this.muzzleFlashRemaining > 0) {
+      this.muzzleFlashRemaining = Math.max(
+        0,
+        this.muzzleFlashRemaining - delta
+      );
+      if (this.muzzleFlashRemaining === 0 && this.muzzleLight) {
+        this.muzzleLight.intensity = 0;
+        this.muzzleFlashOff?.();
+        this.muzzleFlashOff = undefined;
+      }
+    }
     const time = performance.now() * 0.008;
     const bob = moving ? Math.sin(time) * WEAPON.BOB_AMPLITUDE : 0;
     let reloadPose = 0;
@@ -188,8 +201,7 @@ export class WeaponSystem {
   ): void {
     if (!this.muzzleLight) return;
     on();
-    window.setTimeout(() => {
-      if (this.muzzleLight) off();
-    }, durationMs);
+    this.muzzleFlashOff = off;
+    this.muzzleFlashRemaining = durationMs / 1000;
   }
 }

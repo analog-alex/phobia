@@ -38,7 +38,7 @@ export const QUALITY_SETTINGS: Record<QualityTier, QualitySettings> = {
 };
 
 const STORAGE_KEY = "phobia.graphicsPreset";
-const TIERS: QualityTier[] = ["low", "medium"];
+const TIERS: QualityTier[] = ["low", "medium", "high"];
 
 export interface StorageLike {
   getItem(key: string): string | null;
