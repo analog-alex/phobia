@@ -36,6 +36,10 @@ const zombieModelUrl = new URL(
   "../../assests/Meshy_AI__0626205329_optimized.glb",
   import.meta.url
 ).href;
+const acidZombieModelUrl = new URL(
+  "../../assests/Meshy_AI_Neon_Plague_Chemist_0626210338_optimized.glb",
+  import.meta.url
+).href;
 
 export class Game {
   private readonly engine: Engine;
@@ -134,11 +138,16 @@ export class Game {
     this.quality.initialize();
     this.updateQualityButtons();
     this.level = new Sector7(this.scene, this.materials);
-    const zombieModel = await this.loadZombieModel();
+    const [zombieModel, acidZombieModel] = await Promise.all([
+      this.loadEnemyModel(zombieModelUrl, "zombie"),
+      this.loadEnemyModel(acidZombieModelUrl, "acid zombie"),
+    ]);
     this.level.enemySpawns.forEach(({ position, variant }) => {
       const enemy = new Enemy(this.scene, position, variant, this.materials);
       this.enemies.push(enemy);
-      if (zombieModel) enemy.replaceWithModel(zombieModel);
+      const model =
+        variant === "acid" ? (acidZombieModel ?? zombieModel) : zombieModel;
+      if (model) enemy.replaceWithModel(model);
     });
     this.weaponSys.create(this.camera);
     this.effects.createImpactPool();
@@ -190,12 +199,15 @@ export class Game {
     );
   }
 
-  private async loadZombieModel(): Promise<AssetContainer | undefined> {
+  private async loadEnemyModel(
+    modelUrl: string,
+    label: string
+  ): Promise<AssetContainer | undefined> {
     try {
       await import("@babylonjs/loaders/glTF");
       const container = await SceneLoader.LoadAssetContainerAsync(
         "",
-        zombieModelUrl,
+        modelUrl,
         this.scene
       );
       container.materials.forEach((material) => {
@@ -203,10 +215,7 @@ export class Game {
       });
       return container;
     } catch (error) {
-      console.warn(
-        "Could not load zombie model; using procedural fallback",
-        error
-      );
+      console.warn(`Could not load ${label} model; using fallback`, error);
       return undefined;
     }
   }
