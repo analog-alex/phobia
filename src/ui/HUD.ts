@@ -78,8 +78,7 @@ export class HUD {
     }
     if (this.hitmarkerTimer > 0) {
       this.hitmarkerTimer = Math.max(0, this.hitmarkerTimer - delta);
-      if (this.hitmarkerTimer === 0)
-        this.hitmarker.classList.remove("visible");
+      if (this.hitmarkerTimer === 0) this.hitmarker.classList.remove("visible");
     }
     if (this.crosshairTimer > 0) {
       this.crosshairTimer = Math.max(0, this.crosshairTimer - delta);

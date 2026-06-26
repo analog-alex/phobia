@@ -1,8 +1,10 @@
 import { UniversalCamera } from "@babylonjs/core/Cameras/universalCamera";
 import "@babylonjs/core/Collisions/collisionCoordinator";
+
+import type { AssetContainer } from "@babylonjs/core/assetContainer";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
-
+import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { BloomEffect } from "@babylonjs/core/PostProcesses/bloomEffect";
@@ -30,8 +32,8 @@ import { MaterialLibrary } from "./MaterialLibrary";
 import { PlayerController } from "./PlayerController";
 import { WeaponSystem } from "./WeaponSystem";
 
-const explorerModelUrl = new URL(
-  "../../assests/Meshy_AI_Steampunk_Explorer_0621142735_ktx2_lite.glb",
+const zombieModelUrl = new URL(
+  "../../assests/Meshy_AI__0626205329_optimized.glb",
   import.meta.url
 ).href;
 
@@ -132,12 +134,11 @@ export class Game {
     this.quality.initialize();
     this.updateQualityButtons();
     this.level = new Sector7(this.scene, this.materials);
-    const loadExplorerModel = this.quality.getTier() === "high";
-    this.level.enemySpawns.forEach(({ position, variant, model }) => {
+    const zombieModel = await this.loadZombieModel();
+    this.level.enemySpawns.forEach(({ position, variant }) => {
       const enemy = new Enemy(this.scene, position, variant, this.materials);
       this.enemies.push(enemy);
-      if (model === "explorer" && loadExplorerModel)
-        void enemy.replaceWithModel(explorerModelUrl);
+      if (zombieModel) enemy.replaceWithModel(zombieModel);
     });
     this.weaponSys.create(this.camera);
     this.effects.createImpactPool();
@@ -187,6 +188,27 @@ export class Game {
       this.camera,
       true
     );
+  }
+
+  private async loadZombieModel(): Promise<AssetContainer | undefined> {
+    try {
+      await import("@babylonjs/loaders/glTF");
+      const container = await SceneLoader.LoadAssetContainerAsync(
+        "",
+        zombieModelUrl,
+        this.scene
+      );
+      container.materials.forEach((material) => {
+        material.freeze();
+      });
+      return container;
+    } catch (error) {
+      console.warn(
+        "Could not load zombie model; using procedural fallback",
+        error
+      );
+      return undefined;
+    }
   }
 
   private bindEvents(): void {
