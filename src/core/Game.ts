@@ -33,11 +33,11 @@ import { PlayerController } from "./PlayerController";
 import { WeaponSystem } from "./WeaponSystem";
 
 const zombieModelUrl = new URL(
-  "../../assests/Meshy_AI__0626205329_optimized.glb",
+  "../../assests/Meshy_AI__0626205329_balanced.glb",
   import.meta.url
 ).href;
 const acidZombieModelUrl = new URL(
-  "../../assests/Meshy_AI_Neon_Plague_Chemist_0626210338_optimized.glb",
+  "../../assests/Meshy_AI_Neon_Plague_Chemist_0626210338_balanced.glb",
   import.meta.url
 ).href;
 

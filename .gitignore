@@ -30,5 +30,6 @@ pnpm-debug.log*
 *.swo
 
 # Temporary files
+.tmp/
 tmp/
 temp/
