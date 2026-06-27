@@ -19,6 +19,18 @@ const assets = [
     output: "assests/Meshy_AI_Neon_Plague_Chemist_0626210338_balanced.glb",
     ratio: "0.14",
   },
+  {
+    label: "plasma pistol",
+    input: "assests/Meshy_AI_Plasma_Pistol_0627144745_texture.glb",
+    output: "assests/Meshy_AI_Plasma_Pistol_0627144745_balanced.glb",
+    ratio: "0.2",
+  },
+  {
+    label: "bolt-action rifle",
+    input: "assests/Meshy_AI_Steampunk_Artisan_Rif_0627144810_texture.glb",
+    output: "assests/Meshy_AI_Steampunk_Artisan_Rif_0627144810_balanced.glb",
+    ratio: "0.2",
+  },
 ];
 
 const maxOutputBytes = 5 * 1024 * 1024;
@@ -50,14 +62,14 @@ for (const asset of assets) {
     "false",
   ];
 
-  console.log(`Optimizing ${asset.label} enemy asset...`);
+  console.log(`Optimizing ${asset.label} asset...`);
   const result = spawnSync(gltfTransform, args, {
     cwd: root,
     stdio: "inherit",
   });
 
   if (result.status !== 0) {
-    throw new Error(`Failed to optimize ${asset.label} enemy asset.`);
+    throw new Error(`Failed to optimize ${asset.label} asset.`);
   }
 
   const size = statSync(resolve(root, asset.output)).size;

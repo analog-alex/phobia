@@ -2,6 +2,7 @@ export class HUD {
   private readonly root = this.get("hud");
   private readonly health = this.get("health");
   private readonly healthBar = this.get("health-bar");
+  private readonly weaponName = this.get("weapon-name");
   private readonly ammo = this.get("ammo");
   private readonly reserve = this.get("reserve");
   private readonly prompt = this.get("prompt");
@@ -17,6 +18,7 @@ export class HUD {
   private lastClip = -1;
   private lastReserve = -1;
   private lastPrompt = "";
+  private lastWeaponName = "";
 
   show(): void {
     this.root.classList.remove("hidden");
@@ -42,6 +44,13 @@ export class HUD {
     this.lastReserve = reserve;
     this.ammo.textContent = String(clip).padStart(2, "0");
     this.reserve.textContent = `/ ${String(reserve).padStart(2, "0")}`;
+  }
+
+  setWeaponName(value: string): void {
+    const label = value.toUpperCase();
+    if (label === this.lastWeaponName) return;
+    this.lastWeaponName = label;
+    this.weaponName.textContent = label;
   }
 
   setPrompt(value: string): void {

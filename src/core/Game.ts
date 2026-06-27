@@ -149,11 +149,12 @@ export class Game {
         variant === "acid" ? (acidZombieModel ?? zombieModel) : zombieModel;
       if (model) enemy.replaceWithModel(model);
     });
-    this.weaponSys.create(this.camera);
+    await this.weaponSys.create(this.camera);
     this.effects.createImpactPool();
     this.effects.createAcidProjectilePool();
     this.bindEvents();
     this.hud.setHealth(this.health);
+    this.hud.setWeaponName(this.weaponSys.getDisplayName());
     this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
     this.scene.onBeforeRenderObservable.add(() => this.update());
     this.scene.onAfterRenderObservable.add(() => {
@@ -285,11 +286,13 @@ export class Game {
       if (this.paused) return;
       if (
         event.code === "KeyR" ||
+        event.code === "KeyG" ||
         event.code === "KeyE" ||
         event.code === "Space"
       )
         event.preventDefault();
       if (event.code === "KeyR") this.reload();
+      if (event.code === "KeyG" && !event.repeat) this.switchWeapon();
       if (event.code === "KeyE") this.interact();
       if (event.code === "Space" && !event.repeat) this.jump();
     });
@@ -361,7 +364,9 @@ export class Game {
       } else {
         this.weaponSys.addReserve(COMBAT.AMMO_PICKUP);
         this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
-        this.hud.flashMessage("VX-9 ammunition acquired");
+        this.hud.flashMessage(
+          `${this.weaponSys.getDisplayName()} ammunition acquired`
+        );
       }
       pickup.active = false;
       pickup.mesh.setEnabled(false);
@@ -397,7 +402,7 @@ export class Game {
       return;
     if (this.weaponSys.getClip() <= 0) {
       this.audio.empty();
-      this.hud.flashMessage("Magazine empty", 700);
+      this.hud.flashMessage(this.weaponSys.getEmptyMessage(), 700);
       return;
     }
 
@@ -420,7 +425,7 @@ export class Game {
       );
     }
 
-    const ray = this.camera.getForwardRay(WEAPON.FIRE_RANGE);
+    const ray = this.camera.getForwardRay(this.weaponSys.getRange());
     const hit = this.scene.pickWithRay(
       ray,
       (mesh) => mesh.isPickable && mesh.isEnabled()
@@ -434,7 +439,7 @@ export class Game {
       return;
     }
 
-    const killed = enemy.damage(COMBAT.PISTOL_DAMAGE);
+    const killed = enemy.damage(this.weaponSys.getDamage());
     this.hud.showHit();
     this.audio.hit();
     if (hit.pickedPoint) this.effects.createImpact(hit.pickedPoint, true);
@@ -453,6 +458,13 @@ export class Game {
       this.hud.flashMessage("Reloading", 800);
       this.audio.reload();
     }
+  }
+
+  private switchWeapon(): void {
+    this.weaponSys.switchWeapon();
+    this.hud.setWeaponName(this.weaponSys.getDisplayName());
+    this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
+    this.hud.flashMessage(this.weaponSys.getDisplayName(), 900);
   }
 
   private jump(): void {
