@@ -45,12 +45,6 @@ export const PHYSICS = {
 } as const;
 
 export const WEAPON = {
-  /** Clip size */
-  CLIP_SIZE: 12,
-  /** Starting reserve ammo */
-  START_RESERVE: 48,
-  /** Reload duration (seconds) */
-  RELOAD_DURATION: 0.82,
   /** Weapon bob amplitude */
   BOB_AMPLITUDE: 0.012,
   /** Weapon kick decay rate */
@@ -59,19 +53,43 @@ export const WEAPON = {
   MUZZLE_FLASH_MS: 42,
   /** Muzzle flash intensity */
   MUZZLE_FLASH_INTENSITY: 4,
-  /** Raycast range for shots */
-  FIRE_RANGE: 80,
   /** Kick crosshair timeout (ms) */
   KICK_CROSSHAIR_MS: 85,
-  /** Weapon local position base */
-  POSITION: { x: 0.42, y: -0.37, z: 0.95 },
-  /** Weapon local rotation base */
-  ROTATION: { x: -0.08, y: -0.04, z: 0.02 },
+  PISTOL: {
+    /** Clip size */
+    CLIP_SIZE: 12,
+    /** Starting reserve ammo */
+    START_RESERVE: 48,
+    /** Reload duration (seconds) */
+    RELOAD_DURATION: 0.82,
+    /** Pistol damage per hit */
+    DAMAGE: 34,
+    /** Raycast range for pistol shots */
+    RANGE: 80,
+    /** Weapon local position base */
+    POSITION: { x: 0.42, y: -0.37, z: 0.95 },
+    /** Weapon local rotation base */
+    ROTATION: { x: -0.08, y: -0.04, z: 0.02 },
+  },
+  RIFLE: {
+    /** Bolt-action chamber size */
+    CLIP_SIZE: 1,
+    /** Starting reserve ammo */
+    START_RESERVE: 10,
+    /** Reload duration (seconds) */
+    RELOAD_DURATION: 1.18,
+    /** Rifle damage per hit */
+    DAMAGE: 115,
+    /** Raycast range for rifle shots */
+    RANGE: 145,
+    /** Weapon local position base */
+    POSITION: { x: 0.34, y: -0.43, z: 0.98 },
+    /** Weapon local rotation base */
+    ROTATION: { x: -0.06, y: -0.08, z: 0.01 },
+  },
 } as const;
 
 export const COMBAT = {
-  /** Pistol damage per hit */
-  PISTOL_DAMAGE: 34,
   /** Enemy melee damage (normal) */
   ENEMY_MELEE_DAMAGE: 16,
   /** Enemy melee damage (runner) */
