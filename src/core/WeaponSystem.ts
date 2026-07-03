@@ -11,12 +11,12 @@ import { WEAPON } from "../config/constants";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 import { smoothStep } from "../utils/math";
 
-const plasmaPistolModelUrl = new URL(
-  "../../assests/Meshy_AI_Plasma_Pistol_0627144745_balanced.glb",
+const xmbH2SidearmModelUrl = new URL(
+  "../../assests/Meshy_AI_XMB_H2_Assault_Rifle_0703111155_balanced.glb",
   import.meta.url
 ).href;
 const boltRifleModelUrl = new URL(
-  "../../assests/Meshy_AI_Steampunk_Artisan_Rif_0627144810_balanced.glb",
+  "../../assests/Meshy_AI_Olive_Drab_Precision__0703114333_balanced.glb",
   import.meta.url
 ).href;
 
@@ -55,9 +55,9 @@ interface WeaponState {
 const weaponProfiles: Record<WeaponKind, WeaponProfile> = {
   pistol: {
     kind: "pistol",
-    displayName: "VX-9 Sidearm",
+    displayName: "XMB H2 Rifle",
     emptyMessage: "Magazine empty",
-    modelUrl: plasmaPistolModelUrl,
+    modelUrl: xmbH2SidearmModelUrl,
     clipSize: WEAPON.PISTOL.CLIP_SIZE,
     startReserve: WEAPON.PISTOL.START_RESERVE,
     reloadDuration: WEAPON.PISTOL.RELOAD_DURATION,
@@ -77,8 +77,8 @@ const weaponProfiles: Record<WeaponKind, WeaponProfile> = {
         WEAPON.PISTOL.ROTATION.z
       ),
     },
-    modelScale: 0.45,
-    modelOffset: new Vector3(0, 0.02, 0),
+    modelScale: 0.88,
+    modelOffset: new Vector3(0.02, -0.14, -0.18),
     modelRotation: new Vector3(0, -Math.PI / 2, 0),
   },
   rifle: {

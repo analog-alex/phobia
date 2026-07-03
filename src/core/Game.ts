@@ -69,6 +69,7 @@ export class Game {
   private started = false;
   private paused = false;
   private ended = false;
+  private gameplayCursorHidden = false;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     this.engine = new Engine(canvas, true, {
@@ -132,6 +133,7 @@ export class Game {
 
   async initialize(): Promise<void> {
     // Camera configured inside PlayerController
+    this.canvas.style.cursor = "none";
     this.player.attachControl(this.canvas);
     this.scene.activeCamera = this.camera;
     this.configureLightingAndPostProcessing();
@@ -260,6 +262,7 @@ export class Game {
         !this.ended &&
         document.pointerLockElement !== this.canvas
       ) {
+        this.setGameplayCursorHidden(true);
         this.requestPointerLock();
         void this.audio.resume();
       }
@@ -304,6 +307,7 @@ export class Game {
     const delta = Math.min(0.033, frameMs / 1000);
     this.lastFrameMs = frameMs;
     const active = this.isGameplayActive();
+    this.setGameplayCursorHidden(active);
     this.quality.update(frameMs, delta, active);
     if (!active || !this.level) return;
     this.hud.update(delta);
@@ -496,6 +500,7 @@ export class Game {
   private finish(success: boolean): void {
     this.ended = true;
     this.started = false;
+    this.setGameplayCursorHidden(false);
     document.exitPointerLock();
     this.hud.hide();
 
@@ -525,6 +530,7 @@ export class Game {
     if (!this.started || this.paused || this.ended) return;
     this.paused = true;
     this.keys.clear();
+    this.setGameplayCursorHidden(false);
     this.camera.detachControl();
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
     document.getElementById("pause-screen")?.classList.add("visible");
@@ -533,6 +539,7 @@ export class Game {
   private resume(): void {
     if (!this.started || !this.paused || this.ended) return;
     this.paused = false;
+    this.setGameplayCursorHidden(true);
     document.getElementById("pause-screen")?.classList.remove("visible");
     this.camera.attachControl(this.canvas, true);
     void this.audio.resume();
@@ -543,6 +550,7 @@ export class Game {
     if (this.started) return;
     this.started = true;
     this.paused = false;
+    this.setGameplayCursorHidden(true);
     this.startTime = performance.now();
     document.getElementById("start-screen")?.classList.remove("visible");
     this.hud.show();
@@ -553,6 +561,16 @@ export class Game {
 
   private requestPointerLock(): void {
     void this.canvas.requestPointerLock().catch(() => undefined);
+  }
+
+  private setGameplayCursorHidden(hidden: boolean): void {
+    if (hidden === this.gameplayCursorHidden) return;
+    this.gameplayCursorHidden = hidden;
+    document.body.classList.toggle("gameplay-active", hidden);
+    const cursor = hidden ? "none" : "";
+    this.canvas.style.cursor = cursor;
+    document.body.style.cursor = cursor;
+    document.documentElement.style.cursor = cursor;
   }
 
   private applyQuality(_tier: QualityTier, settings: QualitySettings): void {

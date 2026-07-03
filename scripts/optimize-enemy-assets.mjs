@@ -20,15 +20,15 @@ const assets = [
     ratio: "0.14",
   },
   {
-    label: "plasma pistol",
-    input: "assests/Meshy_AI_Plasma_Pistol_0627144745_texture.glb",
-    output: "assests/Meshy_AI_Plasma_Pistol_0627144745_balanced.glb",
+    label: "XMB H2 rifle",
+    input: "assests/Meshy_AI_XMB_H2_Assault_Rifle_0703111155_texture.glb",
+    output: "assests/Meshy_AI_XMB_H2_Assault_Rifle_0703111155_balanced.glb",
     ratio: "0.2",
   },
   {
-    label: "bolt-action rifle",
-    input: "assests/Meshy_AI_Steampunk_Artisan_Rif_0627144810_texture.glb",
-    output: "assests/Meshy_AI_Steampunk_Artisan_Rif_0627144810_balanced.glb",
+    label: "olive precision rifle",
+    input: "assests/Meshy_AI_Olive_Drab_Precision__0703114333_texture.glb",
+    output: "assests/Meshy_AI_Olive_Drab_Precision__0703114333_balanced.glb",
     ratio: "0.2",
   },
 ];
