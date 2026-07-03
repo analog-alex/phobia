@@ -45,6 +45,7 @@ button {
   height: 100%;
   outline: none;
   touch-action: none;
+  cursor: none;
 }
 
 #vignette,
@@ -147,6 +148,12 @@ button {
 button:hover {
   background: #d8fff6;
 }
+
+body.gameplay-active,
+body.gameplay-active * {
+  cursor: none;
+}
+
 .secondary-button {
   color: var(--cyan);
   background: rgba(3, 16, 13, 0.72);
@@ -372,53 +379,12 @@ button:hover {
     background 0.2s;
 }
 
-#crosshair {
-  position: absolute;
-  top: 50%;
-  left: 50%;
-  width: 28px;
-  height: 28px;
-  transform: translate(-50%, -50%);
-  transition: transform 0.08s;
-}
-#crosshair i {
-  position: absolute;
-  display: block;
-  background: rgba(220, 255, 247, 0.92);
-  box-shadow: 0 0 3px #021;
-}
-#crosshair i:nth-child(1) {
-  width: 1px;
-  height: 7px;
-  top: 0;
-  left: 14px;
-}
-#crosshair i:nth-child(2) {
-  width: 1px;
-  height: 7px;
-  bottom: 0;
-  left: 14px;
-}
-#crosshair i:nth-child(3) {
-  width: 7px;
-  height: 1px;
-  left: 0;
-  top: 14px;
-}
-#crosshair i:nth-child(4) {
-  width: 7px;
-  height: 1px;
-  right: 0;
-  top: 14px;
-}
-#crosshair.kick {
-  transform: translate(-50%, -50%) scale(1.55);
-}
-
 #hitmarker {
   position: absolute;
   top: 50%;
   left: 50%;
+  z-index: 60;
+  display: none;
   opacity: 0;
   transform: translate(-50%, -53%);
   color: white;
@@ -428,6 +394,7 @@ button:hover {
   transition: opacity 0.15s;
 }
 #hitmarker.visible {
+  display: block;
   opacity: 1;
   transition-duration: 0s;
 }
