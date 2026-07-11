@@ -55,7 +55,7 @@ export const WEAPON = {
   MUZZLE_FLASH_INTENSITY: 4,
   /** Kick crosshair timeout (ms) */
   KICK_CROSSHAIR_MS: 85,
-  PISTOL: {
+  XMB: {
     /** Clip size */
     CLIP_SIZE: 12,
     /** Starting reserve ammo */

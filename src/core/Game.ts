@@ -7,6 +7,7 @@ import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { BloomEffect } from "@babylonjs/core/PostProcesses/bloomEffect";
 import { ChromaticAberrationPostProcess } from "@babylonjs/core/PostProcesses/chromaticAberrationPostProcess";
 import { FxaaPostProcess } from "@babylonjs/core/PostProcesses/fxaaPostProcess";
@@ -16,6 +17,7 @@ import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineMa
 import { Scene } from "@babylonjs/core/scene";
 import { COMBAT, LEVEL, PLAYER, WEAPON } from "../config/constants";
 import { Sector7 } from "../levels/Sector7";
+import { WasteDisposal } from "../levels/WasteDisposal";
 import { AudioSystem } from "../systems/AudioSystem";
 import { Effects } from "../systems/Effects";
 import {
@@ -30,6 +32,8 @@ import { HUD } from "../ui/HUD";
 import { Enemy } from "./Enemy";
 import { MaterialLibrary } from "./MaterialLibrary";
 import { PlayerController } from "./PlayerController";
+import { RunProgression } from "./RunProgression";
+import type { WeaponKind } from "./WeaponSystem";
 import { WeaponSystem } from "./WeaponSystem";
 
 const zombieModelUrl = new URL(
@@ -51,6 +55,7 @@ export class Game {
   private readonly quality: QualityManager;
   private readonly keys = new Set<string>();
   private readonly enemies: Enemy[] = [];
+  private readonly sectorEnemies: Enemy[] = [];
   private readonly pipeline: PostProcessRenderPipeline;
   private readonly bloom: BloomEffect;
   private readonly fxaa: FxaaPostProcess;
@@ -59,8 +64,25 @@ export class Game {
   private readonly player: PlayerController;
   private readonly effects: Effects;
   private readonly weaponSys: WeaponSystem;
+  private readonly progression = new RunProgression();
+  private readonly onEnemyDamage = (damage: number): void =>
+    this.takeDamage(damage);
+  private readonly onAcidSound = (): void => this.audio.acidThrow();
+  private readonly onAcidThrow = (origin: Vector3): void =>
+    this.effects.throwAcid(origin, this.camera.position, this.onAcidSound);
+  private readonly acidCallbacks = {
+    createImpact: (position: Vector3, organic: boolean, acid = false) =>
+      this.effects.createImpact(position, organic, acid),
+    takeDamage: (damage: number) => this.takeDamage(damage),
+  };
 
   private level?: Sector7;
+  private wasteLevel?: WasteDisposal;
+  private wasteEnemy?: Enemy;
+  private weaponChoices: ReadonlyArray<{
+    kind: WeaponKind;
+    trigger: Mesh;
+  }> = [];
   private health: number = COMBAT.MAX_HEALTH;
   private kills = 0;
   private startTime = 0;
@@ -107,7 +129,7 @@ export class Game {
     this.effects = new Effects(this.scene, this.materials);
     const cam = new UniversalCamera(
       "operative camera",
-      new Vector3(0, PLAYER.HEIGHT, -36),
+      new Vector3(0, PLAYER.HEIGHT, -116),
       this.scene
     );
     this.player = new PlayerController(
@@ -126,7 +148,9 @@ export class Game {
       this.scene,
       this.quality,
       () =>
-        (this.level?.getActiveLightCount() ?? 0) +
+        (this.progression.phase === "waste"
+          ? (this.wasteLevel?.getActiveLightCount() ?? 0)
+          : (this.level?.getActiveLightCount() ?? 0)) +
         ((this.weaponSys.getMuzzleLight()?.intensity ?? 0) > 0 ? 1 : 0)
     );
   }
@@ -139,7 +163,11 @@ export class Game {
     this.configureLightingAndPostProcessing();
     this.quality.initialize();
     this.updateQualityButtons();
+    this.wasteLevel = new WasteDisposal(this.scene, this.materials);
     this.level = new Sector7(this.scene, this.materials);
+    this.level.setActive(false);
+    this.level.setLightBudget(this.currentSettings.dynamicLights);
+    this.wasteLevel.setLightBudget(this.currentSettings.dynamicLights);
     const [zombieModel, acidZombieModel] = await Promise.all([
       this.loadEnemyModel(zombieModelUrl, "zombie"),
       this.loadEnemyModel(acidZombieModelUrl, "acid zombie"),
@@ -147,11 +175,27 @@ export class Game {
     this.level.enemySpawns.forEach(({ position, variant }) => {
       const enemy = new Enemy(this.scene, position, variant, this.materials);
       this.enemies.push(enemy);
+      this.sectorEnemies.push(enemy);
+      enemy.root.setEnabled(false);
       const model =
         variant === "acid" ? (acidZombieModel ?? zombieModel) : zombieModel;
       if (model) enemy.replaceWithModel(model);
     });
+    this.wasteEnemy = new Enemy(
+      this.scene,
+      this.wasteLevel.enemySpawn,
+      "infected",
+      this.materials
+    );
+    this.enemies.push(this.wasteEnemy);
+    if (zombieModel) this.wasteEnemy.replaceWithModel(zombieModel);
     await this.weaponSys.create(this.camera);
+    this.weaponSys.placePickup("xmb", this.wasteLevel.xmbPickup.position);
+    this.weaponSys.placePickup("rifle", this.wasteLevel.boltPickup.position);
+    this.weaponChoices = [
+      { kind: "xmb", trigger: this.wasteLevel.xmbPickup },
+      { kind: "rifle", trigger: this.wasteLevel.boltPickup },
+    ];
     this.effects.createImpactPool();
     this.effects.createAcidProjectilePool();
     this.bindEvents();
@@ -224,14 +268,9 @@ export class Game {
   }
 
   private bindEvents(): void {
-    const startButton = document.getElementById("start-button");
     const restartButton = document.getElementById("restart-button");
     const pauseRestartButton = document.getElementById("pause-restart-button");
     const resumeButton = document.getElementById("resume-button");
-    const startScreen = document.getElementById("start-screen");
-    void startButton;
-    void startScreen;
-
     restartButton?.addEventListener("click", () => window.location.reload());
     pauseRestartButton?.addEventListener("click", () =>
       window.location.reload()
@@ -289,13 +328,11 @@ export class Game {
       if (this.paused) return;
       if (
         event.code === "KeyR" ||
-        event.code === "KeyG" ||
         event.code === "KeyE" ||
         event.code === "Space"
       )
         event.preventDefault();
       if (event.code === "KeyR") this.reload();
-      if (event.code === "KeyG" && !event.repeat) this.switchWeapon();
       if (event.code === "KeyE") this.interact();
       if (event.code === "Space" && !event.repeat) this.jump();
     });
@@ -320,14 +357,17 @@ export class Game {
       this.keys.has("KeyA") ||
       this.keys.has("KeyS") ||
       this.keys.has("KeyD");
-    this.level.update(delta, this.camera.position);
+    this.activeLevel?.update(delta, this.camera.position);
     this.weaponSys.update(delta, moving);
     this.updateEnemies(delta);
-    this.effects.updateAcidProjectiles(delta, this.camera.position, {
-      createImpact: (p, o, a) => this.effects.createImpact(p, o, a),
-      takeDamage: (d) => this.takeDamage(d),
-    });
+    if (this.progression.phase === "sector7")
+      this.effects.updateAcidProjectiles(
+        delta,
+        this.camera.position,
+        this.acidCallbacks
+      );
     this.updatePickups();
+    this.updateWeaponPickup();
     this.updateExtractionPrompt();
   }
 
@@ -336,29 +376,33 @@ export class Game {
   }
 
   private updateEnemies(delta: number): void {
-    this.enemies.forEach((enemy) => {
-      enemy.update(
-        delta,
-        this.camera.position,
-        (damage) => this.takeDamage(damage),
-        (origin) =>
-          this.effects.throwAcid(origin, this.camera.position, () =>
-            this.audio.acidThrow()
-          )
-      );
-    });
+    if (this.progression.phase === "waste") {
+      if (this.wasteEnemy) this.updateEnemy(this.wasteEnemy, delta);
+      return;
+    }
+    for (const enemy of this.sectorEnemies) this.updateEnemy(enemy, delta);
+  }
+
+  private updateEnemy(enemy: Enemy, delta: number): void {
+    enemy.update(
+      delta,
+      this.camera.position,
+      this.onEnemyDamage,
+      this.onAcidThrow
+    );
   }
 
   private updatePickups(): void {
-    if (!this.level) return;
-    this.level.pickups.forEach((pickup) => {
+    if (!this.level || this.progression.phase !== "sector7") return;
+    for (const pickup of this.level.pickups) {
       if (
         !pickup.active ||
-        Vector3.Distance(pickup.mesh.position, this.camera.position) > 1.45
+        Vector3.DistanceSquared(pickup.mesh.position, this.camera.position) >
+          1.45 ** 2
       )
-        return;
+        continue;
       if (pickup.kind === "health") {
-        if (this.health >= COMBAT.MAX_HEALTH) return;
+        if (this.health >= COMBAT.MAX_HEALTH) continue;
         this.health = Math.min(
           COMBAT.MAX_HEALTH,
           this.health + COMBAT.HEALTH_KIT_RESTORE
@@ -375,16 +419,62 @@ export class Game {
       pickup.active = false;
       pickup.mesh.setEnabled(false);
       this.audio.pickup();
-    });
+    }
+  }
+
+  private updateWeaponPickup(): void {
+    if (!this.wasteLevel || this.weaponSys.hasWeapon()) return;
+    let choice: (typeof this.weaponChoices)[number] | undefined;
+    for (const candidate of this.weaponChoices) {
+      if (
+        Vector3.DistanceSquared(
+          candidate.trigger.position,
+          this.camera.position
+        ) <=
+        2.15 ** 2
+      ) {
+        choice = candidate;
+        break;
+      }
+    }
+    if (!choice) return;
+    if (!this.progression.selectWeapon(choice.kind)) return;
+    this.weaponSys.acquire(choice.kind);
+    this.wasteLevel.xmbPickup.setEnabled(false);
+    this.wasteLevel.boltPickup.setEnabled(false);
+    this.hud.setWeaponName(this.weaponSys.getDisplayName());
+    this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
+    this.hud.flashMessage(
+      `${this.weaponSys.getDisplayName()} selected // Left click to fire`,
+      2600
+    );
+    this.hud.setObjective("Clear the disposal bay and reach the lift");
+    this.audio.pickup();
   }
 
   private updateExtractionPrompt(): void {
     if (!this.level) return;
-    const distance = Vector3.Distance(
-      this.level.extractionConsole.position,
+    if (this.progression.phase === "waste" && this.wasteLevel) {
+      const distanceSquared = Vector3.DistanceSquared(
+        this.wasteLevel.elevatorConsole.position,
+        this.camera.position
+      );
+      if (distanceSquared > LEVEL.EXTRACTION_DISTANCE ** 2) {
+        this.hud.setPrompt("");
+        return;
+      }
+      this.hud.setPrompt(
+        this.wasteEnemy?.isDead
+          ? "[ E ] ASCEND TO SECTOR 7"
+          : "ELEVATOR INTERLOCK // INFECTED IN DISPOSAL BAY"
+      );
+      return;
+    }
+    const distanceSquared = Vector3.DistanceSquared(
+      this.level.elevatorConsole.position,
       this.camera.position
     );
-    if (distance > LEVEL.EXTRACTION_DISTANCE) {
+    if (distanceSquared > LEVEL.EXTRACTION_DISTANCE ** 2) {
       this.hud.setPrompt("");
       return;
     }
@@ -401,7 +491,8 @@ export class Game {
       !this.started ||
       this.paused ||
       this.ended ||
-      this.weaponSys.isReloading()
+      this.weaponSys.isReloading() ||
+      !this.progression.allowsWeaponAction
     )
       return;
     if (this.weaponSys.getClip() <= 0) {
@@ -417,14 +508,14 @@ export class Game {
 
     const muzzle = this.weaponSys.getMuzzleLight();
     if (muzzle) {
-      this.level?.setLightBudget(
+      this.activeLevel?.setLightBudget(
         Math.max(1, this.currentSettings.dynamicLights - 1)
       );
       this.weaponSys.triggerMuzzle(
         () => (muzzle.intensity = WEAPON.MUZZLE_FLASH_INTENSITY),
         () => {
           if (muzzle) muzzle.intensity = 0;
-          this.level?.setLightBudget(this.currentSettings.dynamicLights);
+          this.activeLevel?.setLightBudget(this.currentSettings.dynamicLights);
         }
       );
     }
@@ -458,17 +549,11 @@ export class Game {
   }
 
   private reload(): void {
+    if (!this.progression.allowsWeaponAction) return;
     if (this.weaponSys.tryReload()) {
       this.hud.flashMessage("Reloading", 800);
       this.audio.reload();
     }
-  }
-
-  private switchWeapon(): void {
-    this.weaponSys.switchWeapon();
-    this.hud.setWeaponName(this.weaponSys.getDisplayName());
-    this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
-    this.hud.flashMessage(this.weaponSys.getDisplayName(), 900);
   }
 
   private jump(): void {
@@ -477,13 +562,32 @@ export class Game {
 
   private interact(): void {
     if (!this.level) return;
-    const distance = Vector3.Distance(
-      this.level.extractionConsole.position,
+    if (this.progression.phase === "waste" && this.wasteLevel) {
+      const distanceSquared = Vector3.DistanceSquared(
+        this.wasteLevel.elevatorConsole.position,
+        this.camera.position
+      );
+      if (
+        distanceSquared <= LEVEL.EXTRACTION_DISTANCE ** 2 &&
+        this.progression.ascendWaste(this.wasteEnemy?.isDead ?? false)
+      ) {
+        this.camera.position.set(0, PLAYER.HEIGHT, -36);
+        this.hud.setPrompt("");
+        this.hud.flashMessage("LEVEL 07 // INITIAL BREACH", 2400);
+        this.hud.setObjective("Reach the extraction lift");
+        this.wasteLevel.setActive(false);
+        this.level.setActive(true);
+        for (const enemy of this.sectorEnemies) enemy.root.setEnabled(true);
+      }
+      return;
+    }
+    const distanceSquared = Vector3.DistanceSquared(
+      this.level.elevatorConsole.position,
       this.camera.position
     );
     if (
-      distance <= LEVEL.EXTRACTION_DISTANCE &&
-      this.kills === this.enemies.length
+      distanceSquared <= LEVEL.EXTRACTION_DISTANCE ** 2 &&
+      this.progression.completeSector(this.enemies.length - this.kills)
     )
       this.finish(true);
   }
@@ -556,7 +660,10 @@ export class Game {
     this.hud.show();
     void this.audio.resume();
     this.requestPointerLock();
-    this.hud.flashMessage("Emergency power online");
+    this.hud.setWeaponName("UNARMED");
+    this.hud.setAmmo(0, 0);
+    this.hud.setObjective("Choose one weapon beside the lift");
+    this.hud.flashMessage("LEVEL 08 // WASTE DISPOSAL", 2400);
   }
 
   private requestPointerLock(): void {
@@ -592,7 +699,12 @@ export class Game {
         : "disableEffectInPipeline"
     ](this.pipeline.name, "chromatic", this.camera);
     this.level?.setLightBudget(settings.dynamicLights);
+    this.wasteLevel?.setLightBudget(settings.dynamicLights);
     this.updateQualityButtons();
+  }
+
+  private get activeLevel(): Sector7 | WasteDisposal | undefined {
+    return this.progression.phase === "waste" ? this.wasteLevel : this.level;
   }
 
   private updateQualityButtons(): void {

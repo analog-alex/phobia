@@ -20,7 +20,7 @@ const boltRifleModelUrl = new URL(
   import.meta.url
 ).href;
 
-export type WeaponKind = "pistol" | "rifle";
+export type WeaponKind = "xmb" | "rifle";
 
 interface WeaponPose {
   position: Vector3;
@@ -53,28 +53,28 @@ interface WeaponState {
 }
 
 const weaponProfiles: Record<WeaponKind, WeaponProfile> = {
-  pistol: {
-    kind: "pistol",
+  xmb: {
+    kind: "xmb",
     displayName: "XMB H2 Rifle",
     emptyMessage: "Magazine empty",
     modelUrl: xmbH2SidearmModelUrl,
-    clipSize: WEAPON.PISTOL.CLIP_SIZE,
-    startReserve: WEAPON.PISTOL.START_RESERVE,
-    reloadDuration: WEAPON.PISTOL.RELOAD_DURATION,
-    damage: WEAPON.PISTOL.DAMAGE,
-    range: WEAPON.PISTOL.RANGE,
+    clipSize: WEAPON.XMB.CLIP_SIZE,
+    startReserve: WEAPON.XMB.START_RESERVE,
+    reloadDuration: WEAPON.XMB.RELOAD_DURATION,
+    damage: WEAPON.XMB.DAMAGE,
+    range: WEAPON.XMB.RANGE,
     kickScale: 1,
     muzzleOffset: new Vector3(0, 0, 0.5),
     basePose: {
       position: new Vector3(
-        WEAPON.PISTOL.POSITION.x,
-        WEAPON.PISTOL.POSITION.y,
-        WEAPON.PISTOL.POSITION.z
+        WEAPON.XMB.POSITION.x,
+        WEAPON.XMB.POSITION.y,
+        WEAPON.XMB.POSITION.z
       ),
       rotation: new Vector3(
-        WEAPON.PISTOL.ROTATION.x,
-        WEAPON.PISTOL.ROTATION.y,
-        WEAPON.PISTOL.ROTATION.z
+        WEAPON.XMB.ROTATION.x,
+        WEAPON.XMB.ROTATION.y,
+        WEAPON.XMB.ROTATION.z
       ),
     },
     modelScale: 0.88,
@@ -116,19 +116,21 @@ export interface WeaponCallbacks {
 }
 
 export class WeaponSystem {
-  private activeKind: WeaponKind = "pistol";
+  private activeKind: WeaponKind = "xmb";
   private muzzleLight?: PointLight;
+  private camera?: UniversalCamera;
 
   private weaponKick = 0;
   private reloading = false;
   private reloadTime = 0;
   private muzzleFlashRemaining = 0;
   private muzzleFlashOff?: () => void;
+  private acquired = false;
   private readonly weapons: Record<WeaponKind, WeaponState> = {
-    pistol: {
-      profile: weaponProfiles.pistol,
-      clip: weaponProfiles.pistol.clipSize,
-      reserve: weaponProfiles.pistol.startReserve,
+    xmb: {
+      profile: weaponProfiles.xmb,
+      clip: weaponProfiles.xmb.clipSize,
+      reserve: weaponProfiles.xmb.startReserve,
     },
     rifle: {
       profile: weaponProfiles.rifle,
@@ -170,6 +172,7 @@ export class WeaponSystem {
   }
 
   async create(camera: UniversalCamera): Promise<void> {
+    this.camera = camera;
     await Promise.all(
       (Object.keys(this.weapons) as WeaponKind[]).map(async (kind) => {
         const state = this.weapons[kind];
@@ -182,7 +185,7 @@ export class WeaponSystem {
             return this.createFallbackWeapon(camera, state.profile);
           }
         );
-        root.setEnabled(kind === this.activeKind);
+        root.setEnabled(this.acquired && kind === this.activeKind);
         state.root = root;
       })
     );
@@ -198,20 +201,36 @@ export class WeaponSystem {
     this.attachMuzzleLight();
   }
 
-  switchWeapon(): WeaponKind {
-    if (this.reloading) return this.activeKind;
-    const next: WeaponKind = this.activeKind === "pistol" ? "rifle" : "pistol";
-    this.muzzleFlashOff?.();
-    this.muzzleFlashOff = undefined;
-    this.muzzleFlashRemaining = 0;
-    if (this.muzzleLight) this.muzzleLight.intensity = 0;
-    this.weaponKick = 0;
-    this.reloadTime = 0;
-    this.weapons[this.activeKind].root?.setEnabled(false);
-    this.activeKind = next;
-    this.active.root?.setEnabled(true);
+  hasWeapon(): boolean {
+    return this.acquired;
+  }
+
+  placePickup(kind: WeaponKind, position: Vector3): void {
+    const root = this.weapons[kind].root;
+    if (!root || this.acquired) return;
+    root.parent = null;
+    root.position.copyFrom(position);
+    root.position.y += 0.18;
+    root.rotation.set(0.04, -0.35, -0.08);
+    root.scaling.setAll(1.12);
+    root.setEnabled(true);
+  }
+
+  acquire(kind: WeaponKind): void {
+    if (this.acquired) return;
+    this.activeKind = kind;
+    this.acquired = true;
+    const unchosen: WeaponKind = kind === "xmb" ? "rifle" : "xmb";
+    this.weapons[unchosen].root?.setEnabled(false);
+    const root = this.active.root;
+    if (root && this.camera) {
+      root.parent = this.camera;
+      root.position.copyFrom(this.profile.basePose.position);
+      root.rotation.copyFrom(this.profile.basePose.rotation);
+      root.scaling.setAll(1);
+      root.setEnabled(true);
+    }
     this.attachMuzzleLight();
-    return this.activeKind;
   }
 
   private createFallbackWeapon(
@@ -310,6 +329,7 @@ export class WeaponSystem {
   }
 
   update(delta: number, moving: boolean): void {
+    if (!this.acquired) return;
     const root = this.active.root;
     if (!root) return;
     this.weaponKick = Math.max(0, this.weaponKick - delta * WEAPON.KICK_DECAY);

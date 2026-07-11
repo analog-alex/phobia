@@ -46,15 +46,18 @@ export class Batcher {
     );
   }
 
-  flush(scene: Scene): void {
+  flush(scene: Scene): Mesh[] {
+    const meshes: Mesh[] = [];
     this.batches.forEach((entry, key) => {
       const mesh = CreateBox(key, { size: 1 }, scene);
       mesh.material = entry.material;
       mesh.isPickable = entry.pickable;
       mesh.freezeWorldMatrix();
       this.setThinMatrices(mesh, entry.matrices);
+      meshes.push(mesh);
     });
     this.batches.clear();
+    return meshes;
   }
 
   private setThinMatrices(mesh: Mesh, matrices: Matrix[]): void {

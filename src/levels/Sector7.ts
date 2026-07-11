@@ -8,12 +8,12 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
-import type { EnemyVariant } from "../core/Enemy";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 import { Batcher } from "../systems/Batcher";
 import { FacilityLighting } from "../systems/FacilityLighting";
-
-export type PickupKind = "health" | "ammo";
+import type { PickupKind } from "../types";
+import { createElevator } from "./ElevatorBuilder";
+import type { EnemySpawn, FacilityLevel } from "./FacilityLevel";
 
 export interface Pickup {
   kind: PickupKind;
@@ -22,12 +22,7 @@ export interface Pickup {
   baseY: number;
 }
 
-interface EnemySpawn {
-  position: Vector3;
-  variant: EnemyVariant;
-}
-
-export class Sector7 {
+export class Sector7 implements FacilityLevel {
   readonly pickups: Pickup[] = [];
   readonly enemySpawns: EnemySpawn[] = [
     { position: new Vector3(2.8, 0, -22), variant: "infected" },
@@ -37,16 +32,20 @@ export class Sector7 {
     { position: new Vector3(4.8, 0, 44), variant: "runner" },
     { position: new Vector3(0, 0, 61), variant: "acid" },
   ];
-  readonly extractionConsole: Mesh;
+  readonly elevatorConsole: Mesh;
   private readonly batcher = new Batcher();
   private readonly lighting: FacilityLighting;
   private readonly slidingDoor: TransformNode;
+  private readonly levelMeshes: Mesh[];
+  private active = true;
+  private lightBudget = 0;
   private time = 0;
 
   constructor(
     private readonly scene: Scene,
     private readonly materials: MaterialLibrary
   ) {
+    const firstMesh = scene.meshes.length;
     scene.clearColor = new Color4(0.012, 0.035, 0.038, 1);
     scene.fogMode = Scene.FOGMODE_EXP2;
     scene.fogDensity = 0.007;
@@ -59,7 +58,7 @@ export class Sector7 {
     this.createSecurityCheckpoint();
     this.createMainLab();
     this.createContainment();
-    this.extractionConsole = this.createExtraction();
+    this.elevatorConsole = this.createExtraction();
     this.createCeilingLights();
     this.createBloodTrail();
     this.batcher.flush(scene);
@@ -92,6 +91,7 @@ export class Sector7 {
     materials.enemy("runner");
     materials.enemy("acid");
     this.materials.freeze();
+    this.levelMeshes = scene.meshes.slice(firstMesh) as Mesh[];
   }
 
   update(delta: number, playerPosition: Vector3): void {
@@ -111,7 +111,15 @@ export class Sector7 {
   }
 
   setLightBudget(count: number): void {
-    this.lighting.setBudget(count);
+    this.lightBudget = count;
+    this.lighting.setBudget(this.active ? count : 0);
+  }
+
+  setActive(active: boolean): void {
+    if (active === this.active) return;
+    this.active = active;
+    for (const mesh of this.levelMeshes) mesh.setEnabled(active);
+    this.lighting.setBudget(active ? this.lightBudget : 0);
   }
 
   getActiveLightCount(): number {
@@ -365,50 +373,21 @@ export class Sector7 {
 
   private createExtraction(): Mesh {
     this.hazardLine(57.5);
-    this.batchBox(
-      "lift",
-      new Vector3(12, 4.4, 0.5),
-      new Vector3(0, 2.2, 76),
-      this.materials.dark,
-      true
-    );
-    this.batchBox(
-      "lift",
-      new Vector3(7.5, 3.8, 0.28),
-      new Vector3(0, 1.9, 75.7),
-      this.materials.wall,
-      true
-    );
     this.collider(
       "lift collision",
       new Vector3(12, 4.4, 0.5),
       new Vector3(0, 2.2, 76),
       true
     );
-    this.batchBox(
-      "signs",
-      new Vector3(4, 0.35, 0.05),
-      new Vector3(0, 4.05, 75.48),
-      this.materials.cyan
-    );
-    const console = this.dynamicBox(
-      "extraction console",
-      new Vector3(1.3, 1.4, 0.7),
-      new Vector3(5.6, 0.72, 72.4),
-      this.materials.steel,
-      true
-    );
-    console.metadata = { extraction: true };
-    console.isPickable = true;
-    this.batchBox(
-      "screens",
-      new Vector3(0.9, 0.55, 0.04),
-      new Vector3(5.6, 1.05, 72.02),
-      this.materials.cyan,
-      false,
-      -0.2
-    );
-    return console;
+    return createElevator({
+      scene: this.scene,
+      materials: this.materials,
+      z: 76,
+      label: "-07  //  RESEARCH SECTOR",
+      accent: this.materials.cyan,
+      batchBox: (name, size, position, material) =>
+        this.batchBox(name, size, position, material),
+    });
   }
 
   private createCeilingLights(): void {

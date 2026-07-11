@@ -46,7 +46,7 @@ const playIntro = async (startGame: () => void): Promise<void> => {
 
 startButton.addEventListener("click", async () => {
   startButton.disabled = true;
-  startButton.textContent = "INITIALIZING SECTOR...";
+  startButton.textContent = "INITIALIZING LEVEL...";
   const { Game } = await preloadGame();
   const game = new Game(canvas);
   await game.initialize();
