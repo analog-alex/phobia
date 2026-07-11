@@ -9,6 +9,7 @@ export class HUD {
   private readonly message = this.get("message");
   private readonly hitmarker = this.get("hitmarker");
   private readonly damageFlash = this.get("damage-flash");
+  private readonly objective = this.get("objective").querySelector("b");
   private readonly standingCrosshair = this.createStandingCrosshair();
   private messageTimer = 0;
   private hitmarkerTimer = 0;
@@ -59,6 +60,10 @@ export class HUD {
     if (value === this.lastPrompt) return;
     this.lastPrompt = value;
     this.prompt.textContent = value;
+  }
+
+  setObjective(value: string): void {
+    if (this.objective) this.objective.textContent = value;
   }
 
   flashMessage(value: string, duration = 1800): void {

@@ -22,6 +22,12 @@ export class FacilityLighting {
   setBudget(count: number): void {
     this.budget = count;
     this.lightUpdateTimer = 0;
+    if (count > 0) return;
+    for (const entry of this.active) {
+      entry.light.intensity = 0;
+      entry.light.setEnabled(false);
+    }
+    this.active.clear();
   }
 
   getActiveCount(): number {
@@ -64,7 +70,7 @@ export class FacilityLighting {
   }
 
   private recomputeActive(playerPosition: Vector3): void {
-    const nearest = [...this.lights]
+    const nearest = this.lights
       .sort(
         (a, b) =>
           Vector3.DistanceSquared(a.light.position, playerPosition) -
