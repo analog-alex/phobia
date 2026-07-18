@@ -148,7 +148,6 @@ export class HUD {
       bar.style.width = barStyle.width;
       bar.style.height = barStyle.height;
       bar.style.background = "#ffffff";
-      bar.style.boxShadow = "0 0 6px rgba(255, 255, 255, 0.95)";
       crosshair.append(bar);
     });
 
