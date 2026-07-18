@@ -1,8 +1,10 @@
+import type { AssetContainer } from "@babylonjs/core/assetContainer";
+import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import type { Material } from "@babylonjs/core/Materials/material";
 import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
-import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
@@ -14,6 +16,40 @@ import { FacilityLighting } from "../systems/FacilityLighting";
 import type { PickupKind } from "../types";
 import { createElevator } from "./ElevatorBuilder";
 import type { EnemySpawn, FacilityLevel } from "./FacilityLevel";
+import { PropModel } from "./PropModel";
+
+const medkitModelUrl = new URL(
+  "../../assests/Meshy_AI_Aether_Medkit_balanced.glb",
+  import.meta.url
+).href;
+const ammoCrateModelUrl = new URL(
+  "../../assests/Meshy_AI_ARMEX_Ammo_Crate_balanced.glb",
+  import.meta.url
+).href;
+const analyzerModelUrl = new URL(
+  "../../assests/Meshy_AI_Lab_Analyzer_balanced.glb",
+  import.meta.url
+).href;
+const containmentPodModelUrl = new URL(
+  "../../assests/Meshy_AI_Containment_Pod_balanced.glb",
+  import.meta.url
+).href;
+const labArmModelUrl = new URL(
+  "../../assests/Meshy_AI_Articulated_Lab_Arm_balanced.glb",
+  import.meta.url
+).href;
+const damagedDroidModelUrl = new URL(
+  "../../assests/Meshy_AI_Damaged_Security_Droid_balanced.glb",
+  import.meta.url
+).href;
+const breachedContainmentModelUrl = new URL(
+  "../../assests/Meshy_AI_Breached_Containment_balanced.glb",
+  import.meta.url
+).href;
+const emergencyGearModelUrl = new URL(
+  "../../assests/Meshy_AI_Emergency_Gear_balanced.glb",
+  import.meta.url
+).href;
 
 export interface Pickup {
   kind: PickupKind;
@@ -36,7 +72,7 @@ export class Sector7 implements FacilityLevel {
   private readonly batcher = new Batcher();
   private readonly lighting: FacilityLighting;
   private readonly slidingDoor: TransformNode;
-  private readonly levelMeshes: Mesh[];
+  private readonly levelMeshes: AbstractMesh[];
   private active = true;
   private lightBudget = 0;
   private time = 0;
@@ -91,7 +127,7 @@ export class Sector7 implements FacilityLevel {
     materials.enemy("runner");
     materials.enemy("acid");
     this.materials.freeze();
-    this.levelMeshes = scene.meshes.slice(firstMesh) as Mesh[];
+    this.levelMeshes = scene.meshes.slice(firstMesh);
   }
 
   update(delta: number, playerPosition: Vector3): void {
@@ -124,6 +160,120 @@ export class Sector7 implements FacilityLevel {
 
   getActiveLightCount(): number {
     return this.lighting.getActiveCount();
+  }
+
+  async loadPickupModels(): Promise<void> {
+    await import("@babylonjs/loaders/glTF");
+    const [healthModel, ammoModel] = await Promise.all([
+      this.loadPickupModel(medkitModelUrl, "medkit"),
+      this.loadPickupModel(ammoCrateModelUrl, "ammo crate"),
+    ]);
+    for (const pickup of this.pickups) {
+      const container = pickup.kind === "health" ? healthModel : ammoModel;
+      if (container) this.attachPickupModel(pickup, container);
+    }
+  }
+
+  async loadPropModels(): Promise<void> {
+    const [analyzer, pod, labArm, droid, breached, emergencyGear] =
+      await Promise.all([
+        PropModel.load(this.scene, analyzerModelUrl, "lab analyzer"),
+        PropModel.load(this.scene, containmentPodModelUrl, "containment pod"),
+        PropModel.load(this.scene, labArmModelUrl, "articulated lab arm"),
+        PropModel.load(
+          this.scene,
+          damagedDroidModelUrl,
+          "damaged security droid"
+        ),
+        PropModel.load(
+          this.scene,
+          breachedContainmentModelUrl,
+          "breached containment equipment"
+        ),
+        PropModel.load(
+          this.scene,
+          emergencyGearModelUrl,
+          "abandoned emergency gear"
+        ),
+      ]);
+
+    const add = (
+      model: PropModel | undefined,
+      placements: Parameters<PropModel["instantiate"]>[0][]
+    ): void => {
+      if (!model) return;
+      for (const placement of placements) {
+        this.levelMeshes.push(...model.instantiate(placement, this.active));
+      }
+    };
+
+    add(
+      analyzer,
+      [-7, 3, 13].map((z, index) => ({
+        name: `lab analyzer ${index + 1}`,
+        position: new Vector3(1.1, 1.54, z + 0.1),
+        scaling: new Vector3(0.85, 0.42, 0.8),
+        rotation: new Vector3(0, -0.08 + index * 0.07, 0),
+      }))
+    );
+    add(labArm, [
+      {
+        name: "articulated lab arm 1",
+        position: new Vector3(-2.4, 2.04, 4.2),
+        scaling: new Vector3(0.75, 1.2, 0.9),
+        rotation: new Vector3(0, 0.15, 0),
+      },
+      {
+        name: "articulated lab arm 2",
+        position: new Vector3(2.6, 2.04, 13.4),
+        scaling: new Vector3(0.75, 1.2, 0.9),
+        rotation: new Vector3(0, Math.PI + 0.2, 0),
+      },
+    ]);
+    add(pod, [
+      {
+        name: "occupied containment pod 1",
+        position: new Vector3(-5.6, 1.9, 31),
+        scaling: new Vector3(1.9, 1.85, 1.8),
+        rotation: new Vector3(0, Math.PI, 0),
+      },
+      {
+        name: "occupied containment pod 2",
+        position: new Vector3(5.6, 1.9, 31),
+        scaling: new Vector3(1.9, 1.85, 1.8),
+        rotation: new Vector3(0, Math.PI, 0),
+      },
+    ]);
+    add(breached, [
+      {
+        name: "breached containment pod",
+        position: new Vector3(0, 1.85, 31),
+        scaling: new Vector3(1.7, 1.75, 2),
+        rotation: new Vector3(0, Math.PI + 0.18, 0),
+      },
+    ]);
+    add(droid, [
+      {
+        name: "damaged security droid remains",
+        position: new Vector3(4.2, 0.72, -27.2),
+        scaling: new Vector3(0.9, 0.9, 0.9),
+        rotation: new Vector3(0.1, 0.35, Math.PI / 2),
+      },
+    ]);
+    add(emergencyGear, [
+      {
+        name: "abandoned emergency gear 1",
+        position: new Vector3(5.4, 0.4, 21.5),
+        scaling: new Vector3(0.72, 0.72, 0.72),
+        rotation: new Vector3(0, -0.45, 0),
+      },
+      {
+        name: "abandoned emergency gear 2",
+        position: new Vector3(-5.6, 0.4, 55),
+        scaling: new Vector3(0.68, 0.68, 0.68),
+        rotation: new Vector3(0, 0.75, 0),
+      },
+    ]);
   }
 
   private createShell(): void {
@@ -300,8 +450,6 @@ export class Sector7 implements FacilityLevel {
         true
       );
     }
-    this.robotArm(new Vector3(-2.4, 1.2, 4.2));
-    this.robotArm(new Vector3(2.6, 1.2, 13.4));
     this.batchBox(
       "signs",
       new Vector3(0.05, 0.44, 4.3),
@@ -313,33 +461,6 @@ export class Sector7 implements FacilityLevel {
   private createContainment(): void {
     this.hazardLine(24.5);
     for (const x of [-5.6, 0, 5.6]) {
-      this.batchBox(
-        "pod-base",
-        new Vector3(2.5, 0.4, 2.6),
-        new Vector3(x, 0.2, 31),
-        this.materials.dark
-      );
-      const pod = CreateCylinder(
-        "containment pod",
-        { height: 3.2, diameter: 1.9, tessellation: 16 },
-        this.scene
-      );
-      pod.position.set(x, 1.85, 31);
-      pod.material = this.materials.glass;
-      pod.isPickable = false;
-      pod.freezeWorldMatrix();
-      this.batchBox(
-        "pod-cap",
-        new Vector3(2.1, 0.25, 2.1),
-        new Vector3(x, 3.5, 31),
-        this.materials.steel
-      );
-      this.batchBox(
-        "pod-light",
-        new Vector3(1.4, 0.05, 1.4),
-        new Vector3(x, 3.36, 31),
-        this.materials.green
-      );
       this.collider(
         `pod collision ${x}`,
         new Vector3(2.1, 3.6, 2.1),
@@ -479,12 +600,6 @@ export class Sector7 implements FacilityLevel {
       true
     );
     this.monitor(position.add(new Vector3(-1.35, 1.56, 0)), screen, -0.12);
-    this.batchBox(
-      "analyzers",
-      new Vector3(1.25, 0.55, 0.82),
-      position.add(new Vector3(1.1, 1.42, 0.1)),
-      this.materials.dark
-    );
     for (const x of [-1.9, 1.9]) {
       this.batchBox(
         "sample-vials",
@@ -493,35 +608,6 @@ export class Sector7 implements FacilityLevel {
         screen
       );
     }
-  }
-
-  private robotArm(position: Vector3): void {
-    this.batchBox(
-      "robot-arms",
-      new Vector3(0.82, 0.28, 0.82),
-      position,
-      this.materials.dark
-    );
-    this.batchBox(
-      "robot-arms",
-      new Vector3(0.34, 1.45, 0.38),
-      position.add(new Vector3(0, 0.78, 0)),
-      this.materials.steel,
-      false,
-      0,
-      0,
-      -0.55
-    );
-    this.batchBox(
-      "robot-arms",
-      new Vector3(0.32, 1.25, 0.34),
-      position.add(new Vector3(0.6, 1.68, 0)),
-      this.materials.steel,
-      false,
-      0,
-      0,
-      0.75
-    );
   }
 
   private monitor(
@@ -561,6 +647,64 @@ export class Sector7 implements FacilityLevel {
     mesh.metadata = { pickup: kind };
     mesh.isPickable = false;
     this.pickups.push({ kind, mesh, active: true, baseY: position.y });
+  }
+
+  private async loadPickupModel(
+    modelUrl: string,
+    label: string
+  ): Promise<AssetContainer | undefined> {
+    try {
+      const container = await SceneLoader.LoadAssetContainerAsync(
+        "",
+        modelUrl,
+        this.scene
+      );
+      container.materials.forEach((material) => {
+        material.freeze();
+      });
+      return container;
+    } catch (error) {
+      console.warn(`Could not load ${label} model; using fallback`, error);
+      return undefined;
+    }
+  }
+
+  private attachPickupModel(pickup: Pickup, container: AssetContainer): void {
+    const entries = container.instantiateModelsToScene(
+      (sourceName) => `${pickup.kind}-pickup-${sourceName}`,
+      false
+    );
+    if (entries.rootNodes.length === 0) return;
+
+    const modelRoot = new TransformNode(
+      `${pickup.kind} pickup model`,
+      this.scene
+    );
+    modelRoot.parent = pickup.mesh;
+    entries.rootNodes.forEach((node) => {
+      node.parent = modelRoot;
+    });
+
+    let minY = Infinity;
+    let maxDimension = 0;
+    for (const mesh of modelRoot.getChildMeshes()) {
+      mesh.computeWorldMatrix(true);
+      const bounds = mesh.getBoundingInfo().boundingBox;
+      minY = Math.min(minY, bounds.minimumWorld.y - pickup.mesh.position.y);
+      const size = bounds.maximumWorld.subtract(bounds.minimumWorld);
+      maxDimension = Math.max(maxDimension, size.x, size.y, size.z);
+      mesh.isPickable = false;
+    }
+    if (!Number.isFinite(minY) || maxDimension <= 0) {
+      modelRoot.dispose();
+      return;
+    }
+
+    const scale = 1 / maxDimension;
+    modelRoot.scaling.setAll(scale);
+    modelRoot.position.y = -pickup.baseY + 0.04 - minY * scale;
+    modelRoot.rotation.y = 0.22;
+    pickup.mesh.isVisible = false;
   }
 
   private hazardLine(z: number): void {

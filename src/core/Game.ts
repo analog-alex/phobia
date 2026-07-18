@@ -29,15 +29,17 @@ import {
 import { isEnemyMetadata } from "../types";
 import { Diagnostics } from "../ui/Diagnostics";
 import { HUD } from "../ui/HUD";
+import { horizontalDistanceSquared } from "../utils/math";
 import { Enemy } from "./Enemy";
 import { MaterialLibrary } from "./MaterialLibrary";
+import { getPickupReward } from "./PickupLogic";
 import { PlayerController } from "./PlayerController";
 import { RunProgression } from "./RunProgression";
 import type { WeaponKind } from "./WeaponSystem";
 import { WeaponSystem } from "./WeaponSystem";
 
 const zombieModelUrl = new URL(
-  "../../assests/Meshy_AI__0626205329_balanced.glb",
+  "../../assests/Meshy_AI__0626205329_animated_balanced.glb",
   import.meta.url
 ).href;
 const acidZombieModelUrl = new URL(
@@ -171,6 +173,9 @@ export class Game {
     const [zombieModel, acidZombieModel] = await Promise.all([
       this.loadEnemyModel(zombieModelUrl, "zombie"),
       this.loadEnemyModel(acidZombieModelUrl, "acid zombie"),
+      this.level.loadPickupModels(),
+      this.wasteLevel.loadPropModels(),
+      this.level.loadPropModels(),
     ]);
     this.level.enemySpawns.forEach(({ position, variant }) => {
       const enemy = new Enemy(this.scene, position, variant, this.materials);
@@ -397,20 +402,18 @@ export class Game {
     for (const pickup of this.level.pickups) {
       if (
         !pickup.active ||
-        Vector3.DistanceSquared(pickup.mesh.position, this.camera.position) >
+        horizontalDistanceSquared(pickup.mesh.position, this.camera.position) >
           1.45 ** 2
       )
         continue;
-      if (pickup.kind === "health") {
-        if (this.health >= COMBAT.MAX_HEALTH) continue;
-        this.health = Math.min(
-          COMBAT.MAX_HEALTH,
-          this.health + COMBAT.HEALTH_KIT_RESTORE
-        );
+      const reward = getPickupReward(pickup.kind, this.health);
+      if (!reward) continue;
+      if (reward.kind === "health") {
+        this.health = reward.health;
         this.hud.setHealth(this.health);
         this.hud.flashMessage("Trauma kit acquired");
       } else {
-        this.weaponSys.addReserve(COMBAT.AMMO_PICKUP);
+        this.weaponSys.addReserve(reward.amount);
         this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
         this.hud.flashMessage(
           `${this.weaponSys.getDisplayName()} ammunition acquired`

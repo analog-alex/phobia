@@ -1,3 +1,4 @@
+import type { AnimationGroup } from "@babylonjs/core/Animations/animationGroup";
 import type { AssetContainer } from "@babylonjs/core/assetContainer";
 import type { PBRMaterial } from "@babylonjs/core/Materials/PBR/pbrMaterial";
 import { Scalar } from "@babylonjs/core/Maths/math.scalar";
@@ -31,6 +32,8 @@ export class Enemy {
   private readonly gaitOffset = Math.random() * Math.PI * 2;
   private readonly twitchOffset = Math.random() * Math.PI * 2;
   private readonly attackOrigin = new Vector3();
+  private readonly modelAnimations = new Map<string, AnimationGroup>();
+  private activeModelAnimation?: AnimationGroup;
 
   constructor(
     scene: Scene,
@@ -355,6 +358,7 @@ export class Enemy {
     onRangedAttack: (origin: Vector3) => void
   ): void {
     if (this.dead) {
+      this.stopModelAnimation();
       if (this.dying < 1) {
         this.dying = Math.min(1, this.dying + delta * 2.6);
         this.root.rotation.z = Scalar.Lerp(0, 1.46, this.dying);
@@ -382,6 +386,7 @@ export class Enemy {
     const acidInRange =
       this.variant === "acid" && this.distance >= 4.5 && this.distance < 20;
     if (acidInRange && this.attackCooldown === 0) {
+      this.playModelAnimation("idle");
       this.attackCooldown = 2.15;
       this.attackAnimation = 1;
       this.root.rotation.y =
@@ -393,6 +398,7 @@ export class Enemy {
       );
       onRangedAttack(this.attackOrigin);
     } else if (this.distance < 24 && this.distance > 1.45 && !acidInRange) {
+      this.playModelAnimation(this.variant === "runner" ? "run" : "walk");
       const speed = this.variant === "runner" ? 2.5 : 1.45;
       this.root.position.x += this.direction.x * speed * delta;
       this.root.position.z += this.direction.z * speed * delta;
@@ -409,10 +415,12 @@ export class Enemy {
         (this.variant === "runner" ? -0.11 : -0.04) -
         this.attackAnimation * 0.28;
     } else if (this.distance <= 1.45 && this.attackCooldown === 0) {
+      this.playModelAnimation("idle");
       this.attackCooldown = this.variant === "runner" ? 0.78 : 1.15;
       this.attackAnimation = 1;
       onAttack(this.variant === "runner" ? 12 : 16);
     } else {
+      this.playModelAnimation("idle");
       const idleTwitch = Math.sin(
         this.animationTime * 0.72 + this.twitchOffset
       );
@@ -454,6 +462,13 @@ export class Enemy {
       entries.rootNodes.forEach((node) => {
         node.parent = modelRoot;
       });
+      for (const animation of entries.animationGroups) {
+        animation.stop();
+        const name = animation.name.toLowerCase();
+        if (name.includes("idle")) this.modelAnimations.set("idle", animation);
+        if (name.includes("walk")) this.modelAnimations.set("walk", animation);
+        if (name.includes("run")) this.modelAnimations.set("run", animation);
+      }
 
       let minY = Infinity;
       let maxY = -Infinity;
@@ -474,9 +489,24 @@ export class Enemy {
       modelRoot.scaling.setAll(scale);
       modelRoot.position.y = -minY * scale;
       modelRoot.rotation.y = Math.PI;
+      this.playModelAnimation("idle");
     } catch (error) {
       console.warn("Could not instantiate zombie model", error);
     }
+  }
+
+  private playModelAnimation(name: "idle" | "walk" | "run"): void {
+    const animation = this.modelAnimations.get(name);
+    if (!animation || animation === this.activeModelAnimation) return;
+    this.activeModelAnimation?.stop();
+    this.activeModelAnimation = animation;
+    animation.start(true, name === "run" ? 1.35 : 1);
+  }
+
+  private stopModelAnimation(): void {
+    if (!this.activeModelAnimation) return;
+    this.activeModelAnimation.stop();
+    this.activeModelAnimation = undefined;
   }
 
   private part(

@@ -33,3 +33,4 @@ pnpm-debug.log*
 .tmp/
 tmp/
 temp/
+meshy_output/

@@ -17,3 +17,13 @@ export function horizontalDirectionTo(
   const len = Math.hypot(dx, dz) || 1;
   return { x: dx / len, z: dz / len };
 }
+
+/** Squared planar distance, excluding height differences. */
+export function horizontalDistanceSquared(
+  from: { x: number; z: number },
+  to: { x: number; z: number }
+): number {
+  const dx = to.x - from.x;
+  const dz = to.z - from.z;
+  return dx * dx + dz * dz;
+}

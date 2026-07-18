@@ -1,8 +1,8 @@
 import type { Material } from "@babylonjs/core/Materials/material";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
-import { CreateCylinder } from "@babylonjs/core/Meshes/Builders/cylinderBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
@@ -10,6 +10,16 @@ import { Batcher } from "../systems/Batcher";
 import { FacilityLighting } from "../systems/FacilityLighting";
 import { createElevator } from "./ElevatorBuilder";
 import type { FacilityLevel } from "./FacilityLevel";
+import { PropModel } from "./PropModel";
+
+const compactorModelUrl = new URL(
+  "../../assests/Meshy_AI_Facility_Waste_Compactor_balanced.glb",
+  import.meta.url
+).href;
+const drumClusterModelUrl = new URL(
+  "../../assests/Meshy_AI_Chemical_Drum_Cluster_balanced.glb",
+  import.meta.url
+).href;
 
 export class WasteDisposal implements FacilityLevel {
   readonly spawn = new Vector3(0, 2.75, -116);
@@ -22,7 +32,7 @@ export class WasteDisposal implements FacilityLevel {
   readonly elevatorConsole: Mesh;
   private readonly batcher = new Batcher();
   private readonly lighting: FacilityLighting;
-  private readonly levelMeshes: Mesh[];
+  private readonly levelMeshes: AbstractMesh[];
   private active = true;
   private lightBudget = 0;
 
@@ -54,7 +64,48 @@ export class WasteDisposal implements FacilityLevel {
     );
     this.boltPickup.isVisible = false;
     this.boltPickup.isPickable = false;
-    this.levelMeshes = scene.meshes.slice(firstMesh) as Mesh[];
+    this.levelMeshes = scene.meshes.slice(firstMesh);
+  }
+
+  async loadPropModels(): Promise<void> {
+    const [compactor, drums] = await Promise.all([
+      PropModel.load(this.scene, compactorModelUrl, "waste compactor"),
+      PropModel.load(this.scene, drumClusterModelUrl, "chemical drum cluster"),
+    ]);
+
+    if (compactor) {
+      [-110, -96, -82, -68].forEach((z, index) => {
+        const x = z % 4 === 0 ? -5.8 : 5.8;
+        this.levelMeshes.push(
+          ...compactor.instantiate(
+            {
+              name: `waste compactor ${index + 1}`,
+              position: new Vector3(x, 0.9, z),
+              scaling: new Vector3(2.3, 0.95, 2),
+              rotation: new Vector3(0, x < 0 ? Math.PI / 2 : -Math.PI / 2, 0),
+            },
+            this.active
+          )
+        );
+      });
+    }
+
+    if (drums) {
+      [-104, -90, -76, -62].forEach((z, index) => {
+        const x = z % 4 === 0 ? 6.8 : -6.8;
+        this.levelMeshes.push(
+          ...drums.instantiate(
+            {
+              name: `chemical drum cluster ${index + 1}`,
+              position: new Vector3(x, 0.7, z),
+              scaling: new Vector3(1.2, 0.82, 0.9),
+              rotation: new Vector3(0, index * 0.67, 0),
+            },
+            this.active
+          )
+        );
+      });
+    }
   }
 
   update(delta: number, playerPosition: Vector3): void {
@@ -138,31 +189,25 @@ export class WasteDisposal implements FacilityLevel {
 
   private createWasteLine(): void {
     for (const z of [-110, -96, -82, -68]) {
-      const compactor = this.box(
+      const position = new Vector3(z % 4 === 0 ? -5.8 : 5.8, 0.85, z);
+      this.collider(
         "waste compactor collision",
         new Vector3(4.8, 1.7, 3.2),
-        new Vector3(z % 4 === 0 ? -5.8 : 5.8, 0.85, z),
-        this.materials.dark,
-        true
+        position
       );
-      compactor.isPickable = true;
       this.batch(
         "warning",
         new Vector3(4.2, 0.12, 2.6),
-        new Vector3(compactor.position.x, 1.73, z),
+        new Vector3(position.x, 0.04, z),
         this.materials.hazardYellow
       );
     }
     for (const z of [-104, -90, -76, -62]) {
-      const tank = CreateCylinder(
-        "chemical waste drum",
-        { height: 1.25, diameter: 0.85, tessellation: 12 },
-        this.scene
+      this.collider(
+        "chemical drum cluster collision",
+        new Vector3(2.3, 1.4, 1.8),
+        new Vector3(z % 4 === 0 ? 6.8 : -6.8, 0.7, z)
       );
-      tank.position.set(z % 4 === 0 ? 6.8 : -6.8, 0.63, z);
-      tank.material = this.materials.hazardYellow;
-      tank.checkCollisions = true;
-      tank.isPickable = true;
     }
     this.batch(
       "sewage channel",
