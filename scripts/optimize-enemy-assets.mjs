@@ -32,6 +32,14 @@ const assets = [
     textureSize: "1536",
   },
   {
+    label: "droid grip hand",
+    input: "assests/Meshy_AI_Droid_Grip_Hand_source.glb",
+    output: "assests/Meshy_AI_Droid_Grip_Hand_balanced.glb",
+    ratio: "0.28",
+    simplifyError: "0.006",
+    textureSize: "1024",
+  },
+  {
     label: "olive precision rifle",
     input: "assests/Meshy_AI_Olive_Drab_Precision__0703114333_texture.glb",
     output: "assests/Meshy_AI_Olive_Drab_Precision__0703114333_balanced.glb",

@@ -7,7 +7,7 @@ import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
-import { WEAPON } from "../config/constants";
+import { PICKUPS, WEAPON } from "../config/constants";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 import { smoothStep } from "../utils/math";
 
@@ -19,12 +19,35 @@ const boltRifleModelUrl = new URL(
   "../../assests/Meshy_AI_Olive_Drab_Precision__0703114333_balanced.glb",
   import.meta.url
 ).href;
+const droidHandModelUrl = new URL(
+  "../../assests/Meshy_AI_Droid_Grip_Hand_balanced.glb",
+  import.meta.url
+).href;
 
 export type WeaponKind = "xmb" | "rifle";
 
 interface WeaponPose {
   position: Vector3;
   rotation: Vector3;
+}
+
+/**
+ * Placement of one droid hand in weapon model space.
+ *
+ * The hand model is unrigged and permanently closed, so it is posed by aiming
+ * two of its local axes instead of bending fingers: `forward` is its local +Z
+ * (wrist -> fist) and `up` is its local +Y, the channel the curled fingers wrap.
+ * Aligning `up` with a grip therefore makes the fist close around that grip.
+ */
+interface HandPose {
+  position: Vector3;
+  forward: Vector3;
+  up: Vector3;
+}
+
+interface WeaponHandPoses {
+  right: HandPose;
+  left: HandPose;
 }
 
 interface WeaponProfile {
@@ -43,13 +66,57 @@ interface WeaponProfile {
   modelScale: number;
   modelOffset: Vector3;
   modelRotation: Vector3;
+  handPoses: WeaponHandPoses;
 }
 
 interface WeaponState {
   clip: number;
   reserve: number;
   root?: TransformNode;
+  /** Weapon model space node the droid hands are posed in. */
+  assetRoot?: TransformNode;
   profile: WeaponProfile;
+}
+
+type Vec3Config = {
+  readonly x: number;
+  readonly y: number;
+  readonly z: number;
+};
+
+function toVector3(value: Vec3Config): Vector3 {
+  return new Vector3(value.x, value.y, value.z);
+}
+
+function toHandPoses(config: {
+  readonly RIGHT: { POSITION: Vec3Config; FORWARD: Vec3Config; UP: Vec3Config };
+  readonly LEFT: { POSITION: Vec3Config; FORWARD: Vec3Config; UP: Vec3Config };
+}): WeaponHandPoses {
+  return {
+    right: {
+      position: toVector3(config.RIGHT.POSITION),
+      forward: toVector3(config.RIGHT.FORWARD),
+      up: toVector3(config.RIGHT.UP),
+    },
+    left: {
+      position: toVector3(config.LEFT.POSITION),
+      forward: toVector3(config.LEFT.FORWARD),
+      up: toVector3(config.LEFT.UP),
+    },
+  };
+}
+
+/**
+ * Euler rotation that aims the hand model's local +Z along `forward` and its
+ * local +Y as close to `up` as a right angle allows.
+ */
+function handRotation(pose: HandPose): Vector3 {
+  const forward = pose.forward.normalizeToNew();
+  const up = pose.up
+    .subtract(forward.scale(Vector3.Dot(pose.up, forward)))
+    .normalize();
+  const right = Vector3.Cross(up, forward).normalize();
+  return Vector3.RotationFromAxis(right, up, forward);
 }
 
 const weaponProfiles: Record<WeaponKind, WeaponProfile> = {
@@ -77,9 +144,10 @@ const weaponProfiles: Record<WeaponKind, WeaponProfile> = {
         WEAPON.XMB.ROTATION.z
       ),
     },
-    modelScale: 0.88,
+    modelScale: 0.6,
     modelOffset: new Vector3(0.02, -0.14, -0.18),
     modelRotation: new Vector3(0, -Math.PI / 2, 0),
+    handPoses: toHandPoses(WEAPON.XMB.HANDS),
   },
   rifle: {
     kind: "rifle",
@@ -105,9 +173,10 @@ const weaponProfiles: Record<WeaponKind, WeaponProfile> = {
         WEAPON.RIFLE.ROTATION.z
       ),
     },
-    modelScale: 0.88,
+    modelScale: 0.6,
     modelOffset: new Vector3(0.02, -0.14, -0.18),
     modelRotation: new Vector3(0, -Math.PI / 2, 0),
+    handPoses: toHandPoses(WEAPON.RIFLE.HANDS),
   },
 };
 
@@ -126,6 +195,7 @@ export class WeaponSystem {
   private muzzleFlashRemaining = 0;
   private muzzleFlashOff?: () => void;
   private acquired = false;
+  private hands?: { right: TransformNode; left: TransformNode };
   private readonly weapons: Record<WeaponKind, WeaponState> = {
     xmb: {
       profile: weaponProfiles.xmb,
@@ -173,8 +243,8 @@ export class WeaponSystem {
 
   async create(camera: UniversalCamera): Promise<void> {
     this.camera = camera;
-    await Promise.all(
-      (Object.keys(this.weapons) as WeaponKind[]).map(async (kind) => {
+    await Promise.all([
+      ...(Object.keys(this.weapons) as WeaponKind[]).map(async (kind) => {
         const state = this.weapons[kind];
         const root = await this.createModelWeapon(camera, state.profile).catch(
           (error) => {
@@ -187,8 +257,12 @@ export class WeaponSystem {
         );
         root.setEnabled(this.acquired && kind === this.activeKind);
         state.root = root;
-      })
-    );
+      }),
+      // Hands are cosmetic: a failure here must not block the weapon itself.
+      this.createHands().catch((error) => {
+        console.warn("Could not load droid hands; showing weapon only", error);
+      }),
+    ]);
 
     this.muzzleLight = new PointLight(
       "muzzle flash",
@@ -212,8 +286,18 @@ export class WeaponSystem {
     root.position.copyFrom(position);
     root.position.y += 0.18;
     root.rotation.set(0.04, -0.35, -0.08);
-    root.scaling.setAll(1.12);
+    root.scaling.setAll(
+      WEAPON.PICKUP_DISPLAY_SCALE / this.weapons[kind].profile.modelScale
+    );
     root.setEnabled(true);
+  }
+
+  private updatePickupSpin(delta: number): void {
+    for (const kind of Object.keys(this.weapons) as WeaponKind[]) {
+      const root = this.weapons[kind].root;
+      if (!root || !root.isEnabled()) continue;
+      root.rotation.y += delta * PICKUPS.ROT_SPEED;
+    }
   }
 
   acquire(kind: WeaponKind): void {
@@ -230,7 +314,83 @@ export class WeaponSystem {
       root.scaling.setAll(1);
       root.setEnabled(true);
     }
+    this.attachHands();
     this.attachMuzzleLight();
+  }
+
+  /**
+   * Builds one pair of droid hands, kept hidden until a weapon is acquired so
+   * they never appear on a weapon still sitting on its pickup pedestal.
+   */
+  private async createHands(): Promise<void> {
+    await import("@babylonjs/loaders/glTF");
+    const container = await SceneLoader.LoadAssetContainerAsync(
+      "",
+      droidHandModelUrl,
+      this.scene
+    );
+    container.addAllToScene();
+    container.materials.forEach((material) => {
+      material.freeze();
+    });
+
+    const source = new TransformNode("droid hand", this.scene);
+    container.rootNodes.forEach((node) => {
+      node.parent = source;
+    });
+
+    // Cloning shares geometry and materials, so the second hand is nearly free.
+    const mirrored = source.clone("droid hand mirrored", null);
+    if (!mirrored) throw new Error("Failed to clone droid hand");
+
+    this.hands = {
+      right: this.buildHandRoot("right", source),
+      left: this.buildHandRoot("left", mirrored),
+    };
+
+    // A weapon picked up before the hands finished loading still gets them.
+    if (this.acquired) this.attachHands();
+  }
+
+  private buildHandRoot(
+    side: "right" | "left",
+    model: TransformNode
+  ): TransformNode {
+    const root = new TransformNode(`${side} droid hand`, this.scene);
+    // Offsetting by the grip pivot puts the fist's finger channel on the
+    // root's origin, so each weapon's hand poses read as grip positions.
+    const pivot = new TransformNode(`${side} droid hand pivot`, this.scene);
+    pivot.parent = root;
+    pivot.position.set(
+      -WEAPON.HANDS.GRIP_PIVOT.x,
+      -WEAPON.HANDS.GRIP_PIVOT.y,
+      -WEAPON.HANDS.GRIP_PIVOT.z
+    );
+    model.parent = pivot;
+    root.getChildMeshes().forEach((mesh) => {
+      mesh.isPickable = false;
+    });
+    root.setEnabled(false);
+    return root;
+  }
+
+  /** Poses the hand pair onto the acquired weapon and reveals it. */
+  private attachHands(): void {
+    const hands = this.hands;
+    const assetRoot = this.active.assetRoot;
+    if (!hands || !assetRoot) return;
+    const scale = WEAPON.HANDS.SCALE;
+
+    for (const side of ["right", "left"] as const) {
+      const pose = this.profile.handPoses[side];
+      const root = hands[side];
+      root.parent = assetRoot;
+      root.position.copyFrom(pose.position);
+      root.rotation.copyFrom(handRotation(pose));
+      // The left hand is the right hand mirrored across the weapon's long axis.
+      root.scaling.set(side === "left" ? -scale : scale, scale, scale);
+      root.setEnabled(true);
+    }
   }
 
   private createFallbackWeapon(
@@ -325,11 +485,15 @@ export class WeaponSystem {
       mesh.isPickable = false;
     });
 
+    this.weapons[profile.kind].assetRoot = assetRoot;
     return root;
   }
 
   update(delta: number, moving: boolean): void {
-    if (!this.acquired) return;
+    if (!this.acquired) {
+      this.updatePickupSpin(delta);
+      return;
+    }
     const root = this.active.root;
     if (!root) return;
     this.weaponKick = Math.max(0, this.weaponKick - delta * WEAPON.KICK_DECAY);
@@ -369,7 +533,7 @@ export class WeaponSystem {
       profile.basePose.position.y +
       bob -
       this.weaponKick * 0.08 * profile.kickScale -
-      reloadPose * 0.29 -
+      reloadPose * WEAPON.RELOAD_DIP -
       magazineSnap * 0.055;
     root.position.z = profile.basePose.position.z - reloadPose * 0.08;
     root.rotation.x =
