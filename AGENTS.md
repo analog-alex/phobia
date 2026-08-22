@@ -28,7 +28,7 @@ Run `assets:optimize` only when source GLBs change. It uses `gltf-transform` to 
 - `src/core/Game.ts`: Babylon scene setup, post-processing, lifecycle, pointer lock, phase transitions, combat, interactions, pickups, audio/effects coordination, and quality application. Keep it as orchestration rather than moving level geometry into it.
 - `src/core/PlayerController.ts`: camera configuration, WASD/sprint movement, collision capsule, ground probing, jump buffering, gravity, and vertical motion.
 - `src/core/Enemy.ts`: infected variants (`infected`, `runner`, `acid`), model replacement with procedural fallback, health/death state, animation, melee AI, and acid attacks.
-- `src/core/WeaponSystem.ts`: XMB H2 and A7 Bolt Rifle profiles, bundled model loading with procedural fallbacks, weapon pickup placement, firing stats, reload animation/state, weapon bob/kick, and muzzle light.
+- `src/core/WeaponSystem.ts`: XMB H2 and A7 Bolt Rifle profiles, bundled model loading with procedural fallbacks, first-person droid hands, weapon pickup placement, firing stats, reload animation/state, weapon bob/kick, and muzzle light.
 - `src/core/RunProgression.ts`: the run state machine (`waste` -> `sector7` -> `complete`) and one-time weapon selection gates. Keep progression rules testable here.
 - `src/core/MaterialLibrary.ts`: shared PBR/emissive materials and cached enemy material sets. Do not create per-instance gameplay materials.
 - `src/levels/FacilityLevel.ts`: common level contract for enemy spawns, activation, updates, and light budgets.
@@ -44,9 +44,11 @@ Run `assets:optimize` only when source GLBs change. It uses `gltf-transform` to 
 - `src/ui/Diagnostics.ts`: F3 overlay for frame timing, FPS, draw calls, active meshes, triangles, active lights, render scale, and quality tier.
 - `src/config/constants.ts`: gameplay, weapon, enemy, effects, level, timing, and graphics tuning values.
 - `src/types/index.ts`: lightweight Babylon metadata tags and type guards.
-- `scripts/optimize-enemy-assets.mjs`: reproducible GLB optimization for infected and weapon assets.
+- `scripts/optimize-enemy-assets.mjs`: reproducible GLB optimization for infected, weapon, and droid hand assets.
 
 Bundled models live under the intentionally named `assests/` directory. Runtime code should load the balanced GLBs and freeze their imported materials; retain procedural fallbacks so a missing model does not prevent the game from starting.
+
+The first-person droid hands are one unrigged, permanently closed fist model (`Meshy_AI_Droid_Grip_Hand_balanced.glb`) loaded once and used twice: the support hand is the trigger hand mirrored by a negative X scale. Because the fingers cannot be bent, each hand is posed by aiming two model axes instead — local `+Z` runs wrist to fist, and local `+Y` is the channel the curled fingers wrap, so aligning `+Y` with a grip closes the fist around it. Per-weapon `WEAPON.<KIND>.HANDS` entries in `src/config/constants.ts` hold those directions plus a grip position in weapon model space; `WEAPON.HANDS.GRIP_PIVOT` shifts the model so those positions read as grip points rather than wrist points. Do not try to curl the fingers by transforming vertices.
 
 ## Engineering Conventions
 
@@ -71,6 +73,7 @@ Bundled models live under the intentionally named `assests/` directory. Runtime 
 - Waste Disposal has one infected and must be cleared before `[ E ] ASCEND TO SECTOR 7` is enabled. Ascending deactivates Waste Disposal, activates Sector 7, places the player at its entrance, and enables the six Sector 7 enemies.
 - Sector 7 extraction remains locked until all six active-sector hostiles are neutralized. The existing total enemy count and level layouts should not change unless explicitly requested.
 - Preserve movement speeds (`8.5` walk, `13` sprint), jump behavior, collision capsule, pickup effects, acid combat, and the classic mouse/pointer-lock control feel unless explicitly requested.
+- The droid hands are cosmetic. They attach to the acquired weapon's model-space node so they inherit bob, kick, and reload motion, stay hidden until a weapon is acquired so pickups never show floating arms, and a hand model that fails to load must leave the weapon fully playable. The hand model ends in a flat cut, so weapon view poses and `modelScale` are tuned to sit close enough to the camera that both forearms run off the bottom of the frame; a pose that exposes those cuts reads as severed arms. `WEAPON.RELOAD_DIP` is tuned against those poses too, so re-check the reload dip whenever the framing moves.
 - Keep the current controls: `WASD` move, `Shift` sprint, `Space` jump, mouse aim/LMB fire, `R` reload, `E` interact with lifts, `Esc` pause/resume, and `F3` diagnostics. Do not reintroduce the removed mid-run weapon-switch action without an explicit design decision.
 - Enemy variants retain their current roles: infected melee, faster runner melee, and acid ranged attacker. Acid projectiles are simulated and updated only during Sector 7.
 - Manual graphics presets override adaptation until Auto is selected again. Adaptive quality must not adjust while paused, loading, or between level phases.

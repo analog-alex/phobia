@@ -55,6 +55,36 @@ export const WEAPON = {
   MUZZLE_FLASH_INTENSITY: 4,
   /** Kick crosshair timeout (ms) */
   KICK_CROSSHAIR_MS: 85,
+  /**
+   * How far the weapon drops out of the aiming pose while reloading. Tuned
+   * against the view poses below: too deep and the whole rig leaves the frame.
+   */
+  RELOAD_DIP: 0.12,
+  /**
+   * On-pedestal size of a weapon awaiting pickup. Applied as a correction to
+   * each profile's view `modelScale` so retuning the first-person framing does
+   * not resize the pickups.
+   */
+  PICKUP_DISPLAY_SCALE: 0.99,
+  /**
+   * Shared first-person droid hand tuning. Per-weapon `HANDS` entries below
+   * position one pair of these in that weapon's model space.
+   */
+  HANDS: {
+    /** Uniform scale of the droid forearm model in weapon model space */
+    SCALE: 0.42,
+    /**
+     * Each weapon's view pose is pulled close enough to the camera that the
+     * forearms run off the bottom of the frame. The model ends in a flat cap,
+     * so a pose that leaves that cut visible reads as a severed arm.
+     */
+    /**
+     * The point on the hand model that the curled fingers close around.
+     * Anchoring here lets each weapon's hand poses be written as the grip
+     * position on the weapon rather than as a wrist position.
+     */
+    GRIP_PIVOT: { x: 0, y: 0, z: 0.61 },
+  },
   XMB: {
     /** Clip size */
     CLIP_SIZE: 12,
@@ -67,9 +97,22 @@ export const WEAPON = {
     /** Raycast range for pistol shots */
     RANGE: 80,
     /** Weapon local position base */
-    POSITION: { x: 0.42, y: -0.37, z: 0.95 },
+    POSITION: { x: 0.26, y: -0.26, z: 0.78 },
     /** Weapon local rotation base */
     ROTATION: { x: -0.08, y: -0.04, z: 0.02 },
+    /** Trigger and support hand placement in XMB model space */
+    HANDS: {
+      RIGHT: {
+        POSITION: { x: -0.26, y: -0.22, z: -0.04 },
+        FORWARD: { x: 0.93, y: 0.3, z: 0.2 },
+        UP: { x: -0.3, y: 0.95, z: 0 },
+      },
+      LEFT: {
+        POSITION: { x: 0.52, y: -0.1, z: 0 },
+        FORWARD: { x: 0.4, y: 0.66, z: -0.64 },
+        UP: { x: 1, y: 0, z: 0 },
+      },
+    },
   },
   RIFLE: {
     /** Bolt-action chamber size */
@@ -83,9 +126,22 @@ export const WEAPON = {
     /** Raycast range for rifle shots */
     RANGE: 145,
     /** Weapon local position base */
-    POSITION: { x: 0.34, y: -0.43, z: 0.98 },
+    POSITION: { x: 0.26, y: -0.22, z: 0.78 },
     /** Weapon local rotation base */
     ROTATION: { x: -0.06, y: -0.08, z: 0.01 },
+    /** Trigger and support hand placement in bolt rifle model space */
+    HANDS: {
+      RIGHT: {
+        POSITION: { x: -0.58, y: -0.19, z: -0.04 },
+        FORWARD: { x: 0.93, y: 0.3, z: 0.2 },
+        UP: { x: -0.3, y: 0.95, z: 0 },
+      },
+      LEFT: {
+        POSITION: { x: 0.22, y: -0.02, z: 0 },
+        FORWARD: { x: 0.4, y: 0.66, z: -0.64 },
+        UP: { x: 1, y: 0, z: 0 },
+      },
+    },
   },
 } as const;
 
