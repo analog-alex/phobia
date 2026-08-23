@@ -164,21 +164,21 @@ export const ENEMY_AI = {
   /** 10 Hz decision tick */
   DECISION_TICK: 0.1,
   /** Normal speed */
-  SPEED: 1.45,
+  SPEED: 1.9,
   /** Runner speed */
-  SPEED_RUNNER: 2.5,
+  SPEED_RUNNER: 3.2,
   /** Melee range */
   MELEE_RANGE: 1.45,
   /** Detection / chase range */
-  CHASE_RANGE: 24,
+  CHASE_RANGE: 30,
   /** Acid attack min range */
   ACID_MIN_RANGE: 4.5,
   /** Acid attack max range */
   ACID_MAX_RANGE: 20,
   /** Attack cooldowns (s) */
-  COOLDOWN_NORMAL: 1.15,
-  COOLDOWN_RUNNER: 0.78,
-  COOLDOWN_ACID: 2.15,
+  COOLDOWN_NORMAL: 0.85,
+  COOLDOWN_RUNNER: 0.55,
+  COOLDOWN_ACID: 1.6,
   /** Base healths */
   HEALTH_INFECTED: 75,
   HEALTH_RUNNER: 55,
@@ -204,6 +204,10 @@ export const LEVEL = {
   DOOR_Z_THRESHOLD: -25,
   /** Door open Y target */
   DOOR_OPEN_Y: 4.6,
+  /** Elevator door proximity-trigger radius */
+  ELEVATOR_DOOR_TRIGGER_DISTANCE: 6,
+  /** Elevator door slide-open offset (added to each door's closed X) */
+  ELEVATOR_DOOR_OPEN_OFFSET: 1.85,
 } as const;
 
 export const EFFECTS = {

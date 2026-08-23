@@ -34,6 +34,7 @@ export class Enemy {
   private readonly attackOrigin = new Vector3();
   private readonly modelAnimations = new Map<string, AnimationGroup>();
   private activeModelAnimation?: AnimationGroup;
+  private attacking = false;
 
   constructor(
     scene: Scene,
@@ -358,7 +359,6 @@ export class Enemy {
     onRangedAttack: (origin: Vector3) => void
   ): void {
     if (this.dead) {
-      this.stopModelAnimation();
       if (this.dying < 1) {
         this.dying = Math.min(1, this.dying + delta * 2.6);
         this.root.rotation.z = Scalar.Lerp(0, 1.46, this.dying);
@@ -369,7 +369,7 @@ export class Enemy {
 
     this.attackCooldown = Math.max(0, this.attackCooldown - delta);
     this.attackAnimation = Math.max(0, this.attackAnimation - delta * 3.4);
-    this.animationTime += delta * (this.variant === "runner" ? 9 : 5);
+    this.animationTime += delta * (this.variant === "runner" ? 11.5 : 6.5);
     this.decisionTimer -= delta;
     if (this.decisionTimer <= 0) {
       this.decisionTimer += ENEMY_AI.DECISION_TICK;
@@ -386,8 +386,9 @@ export class Enemy {
     const acidInRange =
       this.variant === "acid" && this.distance >= 4.5 && this.distance < 20;
     if (acidInRange && this.attackCooldown === 0) {
-      this.playModelAnimation("idle");
-      this.attackCooldown = 2.15;
+      if (this.modelAnimations.has("attack")) this.triggerAttackAnimation();
+      else this.playModelAnimation("idle");
+      this.attackCooldown = 1.6;
       this.attackAnimation = 1;
       this.root.rotation.y =
         Math.atan2(this.direction.x, this.direction.z) + Math.PI;
@@ -397,9 +398,10 @@ export class Enemy {
         this.root.position.z
       );
       onRangedAttack(this.attackOrigin);
-    } else if (this.distance < 24 && this.distance > 1.45 && !acidInRange) {
-      this.playModelAnimation(this.variant === "runner" ? "run" : "walk");
-      const speed = this.variant === "runner" ? 2.5 : 1.45;
+    } else if (this.distance < 30 && this.distance > 1.45 && !acidInRange) {
+      if (!this.attacking)
+        this.playModelAnimation(this.variant === "runner" ? "run" : "walk");
+      const speed = this.variant === "runner" ? 3.2 : 1.9;
       this.root.position.x += this.direction.x * speed * delta;
       this.root.position.z += this.direction.z * speed * delta;
       this.root.rotation.y =
@@ -415,12 +417,13 @@ export class Enemy {
         (this.variant === "runner" ? -0.11 : -0.04) -
         this.attackAnimation * 0.28;
     } else if (this.distance <= 1.45 && this.attackCooldown === 0) {
-      this.playModelAnimation("idle");
-      this.attackCooldown = this.variant === "runner" ? 0.78 : 1.15;
+      if (this.modelAnimations.has("attack")) this.triggerAttackAnimation();
+      else this.playModelAnimation("idle");
+      this.attackCooldown = this.variant === "runner" ? 0.55 : 0.85;
       this.attackAnimation = 1;
       onAttack(this.variant === "runner" ? 12 : 16);
     } else {
-      this.playModelAnimation("idle");
+      if (!this.attacking) this.playModelAnimation("idle");
       const idleTwitch = Math.sin(
         this.animationTime * 0.72 + this.twitchOffset
       );
@@ -436,6 +439,7 @@ export class Enemy {
     this.health -= amount;
     if (this.health <= 0) {
       this.dead = true;
+      this.playDeathAnimation();
       this.root.getChildMeshes().forEach((mesh) => {
         mesh.metadata = { corpse: true };
       });
@@ -468,6 +472,10 @@ export class Enemy {
         if (name.includes("idle")) this.modelAnimations.set("idle", animation);
         if (name.includes("walk")) this.modelAnimations.set("walk", animation);
         if (name.includes("run")) this.modelAnimations.set("run", animation);
+        if (name.includes("attack"))
+          this.modelAnimations.set("attack", animation);
+        if (name.includes("death"))
+          this.modelAnimations.set("death", animation);
       }
 
       let minY = Infinity;
@@ -500,13 +508,27 @@ export class Enemy {
     if (!animation || animation === this.activeModelAnimation) return;
     this.activeModelAnimation?.stop();
     this.activeModelAnimation = animation;
-    animation.start(true, name === "run" ? 1.35 : 1);
+    animation.start(true, name === "run" ? 1.7 : 1.3);
   }
 
-  private stopModelAnimation(): void {
-    if (!this.activeModelAnimation) return;
-    this.activeModelAnimation.stop();
-    this.activeModelAnimation = undefined;
+  private triggerAttackAnimation(): void {
+    const animation = this.modelAnimations.get("attack");
+    if (!animation) return;
+    this.attacking = true;
+    this.activeModelAnimation?.stop();
+    this.activeModelAnimation = animation;
+    animation.start(false, 1);
+    animation.onAnimationGroupEndObservable.addOnce(() => {
+      this.attacking = false;
+    });
+  }
+
+  private playDeathAnimation(): void {
+    const animation = this.modelAnimations.get("death");
+    if (!animation) return;
+    this.activeModelAnimation?.stop();
+    this.activeModelAnimation = animation;
+    animation.start(false, 1);
   }
 
   private part(
