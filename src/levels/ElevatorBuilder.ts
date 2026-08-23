@@ -4,6 +4,7 @@ import { Vector3 as BabylonVector3 } from "@babylonjs/core/Maths/math.vector";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
+import { LEVEL } from "../config/constants";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 import { createElevatorLabel } from "./ElevatorLabel";
 
@@ -24,6 +25,14 @@ interface ElevatorOptions {
   buttonX?: number;
 }
 
+export interface ElevatorHandle {
+  button: Mesh;
+  updateDoors(delta: number, open: boolean): void;
+}
+
+const DOOR_CLOSED_X = 1.84;
+const DOOR_LERP_RATE = 2.4;
+
 export function createElevator({
   scene,
   materials,
@@ -32,25 +41,31 @@ export function createElevator({
   accent,
   batchBox,
   buttonX = 4.38,
-}: ElevatorOptions): Mesh {
+}: ElevatorOptions): ElevatorHandle {
   batchBox(
     "elevator backing",
     new BabylonVector3(12, 4.6, 0.62),
     new BabylonVector3(0, 2.2, z),
     materials.dark
   );
-  batchBox(
+  const leftDoor = CreateBox(
     "left elevator door",
-    new BabylonVector3(3.62, 3.65, 0.24),
-    new BabylonVector3(-1.84, 1.86, z - 0.34),
-    materials.steel
+    { width: 3.62, height: 3.65, depth: 0.24 },
+    scene
   );
-  batchBox(
+  leftDoor.position.set(-DOOR_CLOSED_X, 1.86, z - 0.34);
+  leftDoor.material = materials.steel;
+  leftDoor.isPickable = false;
+
+  const rightDoor = CreateBox(
     "right elevator door",
-    new BabylonVector3(3.62, 3.65, 0.24),
-    new BabylonVector3(1.84, 1.86, z - 0.34),
-    materials.steel
+    { width: 3.62, height: 3.65, depth: 0.24 },
+    scene
   );
+  rightDoor.position.set(DOOR_CLOSED_X, 1.86, z - 0.34);
+  rightDoor.material = materials.steel;
+  rightDoor.isPickable = false;
+
   batchBox(
     "elevator center seal",
     new BabylonVector3(0.12, 3.7, 0.12),
@@ -94,5 +109,15 @@ export function createElevator({
   button.material = materials.steel;
   button.metadata = { extraction: true };
   button.isPickable = true;
-  return button;
+
+  const updateDoors = (delta: number, open: boolean): void => {
+    const offset = open ? LEVEL.ELEVATOR_DOOR_OPEN_OFFSET : 0;
+    const rate = Math.min(1, delta * DOOR_LERP_RATE);
+    leftDoor.position.x +=
+      (-(DOOR_CLOSED_X + offset) - leftDoor.position.x) * rate;
+    rightDoor.position.x +=
+      (DOOR_CLOSED_X + offset - rightDoor.position.x) * rate;
+  };
+
+  return { button, updateDoors };
 }

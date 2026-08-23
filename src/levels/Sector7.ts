@@ -10,6 +10,7 @@ import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import { Scene } from "@babylonjs/core/scene";
+import { LEVEL } from "../config/constants";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 import { Batcher } from "../systems/Batcher";
 import { FacilityLighting } from "../systems/FacilityLighting";
@@ -73,6 +74,7 @@ export class Sector7 implements FacilityLevel {
   private readonly lighting: FacilityLighting;
   private readonly slidingDoor: TransformNode;
   private readonly levelMeshes: AbstractMesh[];
+  private elevatorDoors!: (delta: number, open: boolean) => void;
   private active = true;
   private lightBudget = 0;
   private time = 0;
@@ -137,6 +139,11 @@ export class Sector7 implements FacilityLevel {
     const doorTarget = playerPosition.z > -25 ? 4.6 : 0;
     this.slidingDoor.position.y +=
       (doorTarget - this.slidingDoor.position.y) * Math.min(1, delta * 2.2);
+
+    const elevatorDoorsOpen =
+      Vector3.DistanceSquared(this.elevatorConsole.position, playerPosition) <
+      LEVEL.ELEVATOR_DOOR_TRIGGER_DISTANCE ** 2;
+    this.elevatorDoors(delta, elevatorDoorsOpen);
 
     this.pickups.forEach((pickup, index) => {
       if (!pickup.active) return;
@@ -500,7 +507,7 @@ export class Sector7 implements FacilityLevel {
       new Vector3(0, 2.2, 76),
       true
     );
-    return createElevator({
+    const elevator = createElevator({
       scene: this.scene,
       materials: this.materials,
       z: 76,
@@ -509,6 +516,8 @@ export class Sector7 implements FacilityLevel {
       batchBox: (name, size, position, material) =>
         this.batchBox(name, size, position, material),
     });
+    this.elevatorDoors = elevator.updateDoors;
+    return elevator.button;
   }
 
   private createCeilingLights(): void {

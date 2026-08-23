@@ -16,9 +16,11 @@ const assets = [
     textureSize: "1536",
   },
   {
-    label: "acid infected",
-    input: "assests/Meshy_AI_Neon_Plague_Chemist_0626210338_texture.glb",
-    output: "assests/Meshy_AI_Neon_Plague_Chemist_0626210338_balanced.glb",
+    label: "animated acid infected",
+    input:
+      "assests/Meshy_AI_Neon_Plague_Chemist_0626210338_animated_source.glb",
+    output:
+      "assests/Meshy_AI_Neon_Plague_Chemist_0626210338_animated_balanced.glb",
     ratio: "0.14",
     simplifyError: "0.01",
     textureSize: "1536",

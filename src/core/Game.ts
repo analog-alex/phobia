@@ -43,7 +43,7 @@ const zombieModelUrl = new URL(
   import.meta.url
 ).href;
 const acidZombieModelUrl = new URL(
-  "../../assests/Meshy_AI_Neon_Plague_Chemist_0626210338_balanced.glb",
+  "../../assests/Meshy_AI_Neon_Plague_Chemist_0626210338_animated_balanced.glb",
   import.meta.url
 ).href;
 

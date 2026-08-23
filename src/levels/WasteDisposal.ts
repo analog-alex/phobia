@@ -5,6 +5,7 @@ import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
+import { LEVEL } from "../config/constants";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 import { Batcher } from "../systems/Batcher";
 import { FacilityLighting } from "../systems/FacilityLighting";
@@ -33,6 +34,7 @@ export class WasteDisposal implements FacilityLevel {
   private readonly batcher = new Batcher();
   private readonly lighting: FacilityLighting;
   private readonly levelMeshes: AbstractMesh[];
+  private elevatorDoors!: (delta: number, open: boolean) => void;
   private active = true;
   private lightBudget = 0;
 
@@ -110,6 +112,10 @@ export class WasteDisposal implements FacilityLevel {
 
   update(delta: number, playerPosition: Vector3): void {
     this.lighting.update(delta, playerPosition);
+    const doorsOpen =
+      Vector3.DistanceSquared(this.elevatorConsole.position, playerPosition) <
+      LEVEL.ELEVATOR_DOOR_TRIGGER_DISTANCE ** 2;
+    this.elevatorDoors(delta, doorsOpen);
   }
 
   setLightBudget(count: number): void {
@@ -254,7 +260,7 @@ export class WasteDisposal implements FacilityLevel {
   }
 
   private createElevator(): Mesh {
-    const console = createElevator({
+    const elevator = createElevator({
       scene: this.scene,
       materials: this.materials,
       z: -45,
@@ -264,6 +270,7 @@ export class WasteDisposal implements FacilityLevel {
         this.batch(name, size, position, material),
       buttonX: 4.35,
     });
+    this.elevatorDoors = elevator.updateDoors;
     this.batch(
       "rifle pedestal",
       new Vector3(2.4, 1, 1.4),
@@ -290,7 +297,7 @@ export class WasteDisposal implements FacilityLevel {
       new Vector3(6.4, 1.02, -50.3),
       this.materials.hazardYellow
     );
-    return console;
+    return elevator.button;
   }
 
   private createLights(): void {
