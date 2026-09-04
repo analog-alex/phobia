@@ -1,7 +1,7 @@
 import type { AssetContainer } from "@babylonjs/core/assetContainer";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import type { Material } from "@babylonjs/core/Materials/material";
-import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
+import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Matrix, Quaternion, Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
@@ -9,9 +9,12 @@ import { CreateDisc } from "@babylonjs/core/Meshes/Builders/discBuilder";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import "@babylonjs/core/Meshes/thinInstanceMesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
-import { Scene } from "@babylonjs/core/scene";
+import type { Scene } from "@babylonjs/core/scene";
 import { LEVEL } from "../config/constants";
-import type { MaterialLibrary } from "../core/MaterialLibrary";
+import {
+  type MaterialLibrary,
+  prepareImportedMaterial,
+} from "../core/MaterialLibrary";
 import { Batcher } from "../systems/Batcher";
 import { FacilityLighting } from "../systems/FacilityLighting";
 import type { PickupKind } from "../types";
@@ -84,13 +87,9 @@ export class Sector7 implements FacilityLevel {
     private readonly materials: MaterialLibrary
   ) {
     const firstMesh = scene.meshes.length;
-    scene.clearColor = new Color4(0.012, 0.035, 0.038, 1);
-    scene.fogMode = Scene.FOGMODE_EXP2;
-    scene.fogDensity = 0.007;
-    scene.fogColor = new Color3(0.025, 0.08, 0.085);
-    scene.collisionsEnabled = true;
-
-    this.lighting = new FacilityLighting(scene);
+    this.lighting = new FacilityLighting(scene, (emitter) =>
+      this.batchBox("fixture", emitter.size, emitter.position, emitter.material)
+    );
 
     this.createShell();
     this.createSecurityCheckpoint();
@@ -99,6 +98,7 @@ export class Sector7 implements FacilityLevel {
     this.elevatorConsole = this.createExtraction();
     this.createCeilingLights();
     this.createBloodTrail();
+    this.lighting.build();
     this.batcher.flush(scene);
 
     this.slidingDoor = new TransformNode("security bulkhead", scene);
@@ -153,16 +153,16 @@ export class Sector7 implements FacilityLevel {
     });
   }
 
-  setLightBudget(count: number): void {
+  setLightBudget(count: number): boolean {
     this.lightBudget = count;
-    this.lighting.setBudget(this.active ? count : 0);
+    return this.lighting.setBudget(this.active ? count : 0);
   }
 
-  setActive(active: boolean): void {
-    if (active === this.active) return;
+  setActive(active: boolean): boolean {
+    if (active === this.active) return false;
     this.active = active;
     for (const mesh of this.levelMeshes) mesh.setEnabled(active);
-    this.lighting.setBudget(active ? this.lightBudget : 0);
+    return this.lighting.setBudget(active ? this.lightBudget : 0);
   }
 
   getActiveLightCount(): number {
@@ -297,7 +297,7 @@ export class Sector7 implements FacilityLevel {
       zone,
       new Vector3(18, 0.25, 122),
       new Vector3(0, 4.55, 20),
-      this.materials.dark,
+      this.materials.ceiling,
       true
     );
     b.batch(
@@ -372,6 +372,28 @@ export class Sector7 implements FacilityLevel {
         new Vector3(0, 0.01, z),
         this.materials.dark
       );
+    // Wall trim: a skirting rail, a waist-height seam and a floor guide light
+    // strip give the long panels scale and pull the eye down the corridor.
+    for (const x of [-8.82, 8.82]) {
+      b.batch(
+        zone,
+        new Vector3(0.08, 0.32, 122),
+        new Vector3(x, 0.16, 20),
+        this.materials.dark
+      );
+      b.batch(
+        zone,
+        new Vector3(0.06, 0.05, 122),
+        new Vector3(x, 1.18, 20),
+        this.materials.dark
+      );
+      b.batch(
+        zone,
+        new Vector3(0.04, 0.035, 121),
+        new Vector3(x < 0 ? -8.74 : 8.74, 0.36, 20),
+        this.materials.cyan
+      );
+    }
     for (let z = -38; z < 80; z += 6) {
       b.batch(
         zone,
@@ -521,6 +543,14 @@ export class Sector7 implements FacilityLevel {
   }
 
   private createCeilingLights(): void {
+    // A handful of failing tubes: enough to unsettle, not a disco.
+    const failing = new Set([
+      "-4.8:-36",
+      "4.8:-12",
+      "-4.8:20",
+      "4.8:44",
+      "-4.8:60",
+    ]);
     for (let z = -36; z < 76; z += 8) {
       for (const x of [-4.8, 4.8]) {
         this.batchBox(
@@ -529,34 +559,41 @@ export class Sector7 implements FacilityLevel {
           new Vector3(x, 4.38, z),
           this.materials.dark
         );
-        this.batchBox(
-          "fluorescent",
-          new Vector3(2.7, 0.05, 0.5),
-          new Vector3(x, 4.3, z),
-          this.materials.lamp
-        );
-        this.addFacilityLight(
-          new Vector3(x, 3.9, z),
-          new Color3(0.45, 0.8, 0.78),
-          1.05,
-          10,
-          (z + x) % 3 < 1
+        // Point lights follow inverse-square falloff, so they hang well below
+        // the fixture: high enough to stay out of view, low enough that the
+        // floor and walls catch the pool instead of the ceiling panel.
+        this.lighting.add(
+          new Vector3(x, 3.25, z),
+          new Color3(0.62, 0.86, 0.84),
+          5.6,
+          11,
+          failing.has(`${x}:${z}`),
+          {
+            size: new Vector3(2.7, 0.05, 0.5),
+            position: new Vector3(x, 4.3, z),
+            material: this.materials.lamp,
+          }
         );
       }
     }
     for (const z of [28, 48, 62]) {
-      this.addFacilityLight(
-        new Vector3(0, 3.8, z),
-        new Color3(1, 0.02, 0.01),
-        0.38,
-        9,
-        true
-      );
       this.batchBox(
-        "alarm-beacon",
-        new Vector3(0.32, 0.28, 0.32),
-        new Vector3(0, 4.15, z),
-        this.materials.red
+        "alarm-housing",
+        new Vector3(0.7, 0.1, 0.7),
+        new Vector3(0, 4.38, z),
+        this.materials.dark
+      );
+      this.lighting.add(
+        new Vector3(0, 3.35, z),
+        new Color3(1, 0.04, 0.02),
+        2.4,
+        9,
+        true,
+        {
+          size: new Vector3(0.46, 0.12, 0.46),
+          position: new Vector3(0, 4.28, z),
+          material: this.materials.red,
+        }
       );
     }
   }
@@ -668,9 +705,7 @@ export class Sector7 implements FacilityLevel {
         modelUrl,
         this.scene
       );
-      container.materials.forEach((material) => {
-        material.freeze();
-      });
+      container.materials.forEach(prepareImportedMaterial);
       return container;
     } catch (error) {
       console.warn(`Could not load ${label} model; using fallback`, error);
@@ -798,15 +833,5 @@ export class Sector7 implements FacilityLevel {
     mesh.isVisible = false;
     mesh.metadata = { collision: true };
     mesh.freezeWorldMatrix();
-  }
-
-  private addFacilityLight(
-    position: Vector3,
-    color: Color3,
-    intensity: number,
-    range: number,
-    flicker: boolean
-  ): void {
-    this.lighting.add(position, color, intensity, range, flicker);
   }
 }

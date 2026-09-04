@@ -1,14 +1,43 @@
 import { Ray } from "@babylonjs/core/Culling/ray";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { CreateSphere } from "@babylonjs/core/Meshes/Builders/sphereBuilder";
-import type { Mesh } from "@babylonjs/core/Meshes/mesh";
+import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import type { Scene } from "@babylonjs/core/scene";
 import { COMBAT, EFFECTS } from "../config/constants";
 import type { MaterialLibrary } from "../core/MaterialLibrary";
 
+type ImpactKind = "hard" | "organic" | "acid";
+
+interface ImpactStyle {
+  /** Seconds the sprite lives. */
+  life: number;
+  startScale: number;
+  endScale: number;
+  startVisibility: number;
+}
+
+/**
+ * Impact presets. Sparks are bright and shrink fast, blood puffs out and
+ * fades, acid splashes bloom wide.
+ */
+const IMPACT_STYLES: Record<ImpactKind, ImpactStyle> = {
+  hard: { life: 0.16, startScale: 0.5, endScale: 0.16, startVisibility: 1 },
+  organic: {
+    life: 0.42,
+    startScale: 0.32,
+    endScale: 0.82,
+    startVisibility: 0.95,
+  },
+  acid: { life: 0.5, startScale: 0.4, endScale: 1.15, startVisibility: 0.85 },
+};
+
 export interface ImpactEntry {
   mesh: Mesh;
-  expiresAt: number;
+  /** Seconds elapsed; the entry is free when age >= life. */
+  age: number;
+  life: number;
+  style: ImpactStyle;
 }
 
 export interface AcidProjectile {
@@ -22,7 +51,12 @@ export interface AcidProjectile {
 }
 
 export interface EffectsCallbacks {
-  createImpact: (position: Vector3, organic: boolean, acid?: boolean) => void;
+  createImpact: (
+    position: Vector3,
+    organic: boolean,
+    acid?: boolean,
+    towards?: Vector3
+  ) => void;
   takeDamage: (amount: number) => void;
   onAcidThrowAudio: () => void;
 }
@@ -30,6 +64,7 @@ export interface EffectsCallbacks {
 export class Effects {
   private readonly impacts: ImpactEntry[] = [];
   private readonly acidProjectiles: AcidProjectile[] = [];
+  private readonly impactOffset = new Vector3();
 
   constructor(
     private readonly scene: Scene,
@@ -38,14 +73,16 @@ export class Effects {
 
   createImpactPool(): void {
     for (let index = 0; index < EFFECTS.IMPACT_POOL; index += 1) {
-      const mesh = CreateSphere(
-        `impact-${index}`,
-        { diameter: 0.09, segments: 5 },
-        this.scene
-      );
+      const mesh = CreatePlane(`impact-${index}`, { size: 1 }, this.scene);
+      mesh.billboardMode = Mesh.BILLBOARDMODE_ALL;
       mesh.isPickable = false;
       mesh.setEnabled(false);
-      this.impacts.push({ mesh, expiresAt: 0 });
+      this.impacts.push({
+        mesh,
+        age: Infinity,
+        life: 0,
+        style: IMPACT_STYLES.hard,
+      });
     }
   }
 
@@ -59,6 +96,14 @@ export class Effects {
       core.material = this.materials.acid;
       core.scaling.set(0.8, 0.8, 1.65);
       core.isPickable = false;
+      // A soft glow halo sells the projectile as luminous, caustic bile.
+      const halo = CreatePlane(`acid-halo-${index}`, { size: 1 }, this.scene);
+      halo.material = this.materials.acidSplash;
+      halo.billboardMode = Mesh.BILLBOARDMODE_ALL;
+      halo.isPickable = false;
+      halo.parent = core;
+      // Compensates for the core's stretched scale so the halo stays round.
+      halo.scaling.set(0.95, 0.95, 0.46);
       core.setEnabled(false);
       const direction = new Vector3(0, 0, 1);
       this.acidProjectiles.push({
@@ -73,24 +118,50 @@ export class Effects {
     }
   }
 
-  updateImpactPool(): void {
-    const now = performance.now();
-    this.impacts.forEach((impact) => {
-      if (impact.mesh.isEnabled() && impact.expiresAt <= now)
+  updateImpactPool(delta: number): void {
+    for (const impact of this.impacts) {
+      if (impact.age >= impact.life) continue;
+      impact.age += delta;
+      if (impact.age >= impact.life) {
         impact.mesh.setEnabled(false);
-    });
+        continue;
+      }
+      const t = impact.age / impact.life;
+      const eased = 1 - (1 - t) * (1 - t);
+      const scale =
+        impact.style.startScale +
+        (impact.style.endScale - impact.style.startScale) * eased;
+      impact.mesh.scaling.set(scale, scale, scale);
+      impact.mesh.visibility = impact.style.startVisibility * (1 - t * t);
+    }
   }
 
-  createImpact(position: Vector3, organic: boolean, acid = false): void {
+  /**
+   * Spawns a pooled impact sprite. `towards` nudges the sprite off the hit
+   * surface (usually back along the shot) so the billboard is not half
+   * buried in the wall it hit.
+   */
+  createImpact(
+    position: Vector3,
+    organic: boolean,
+    acid = false,
+    towards?: Vector3
+  ): void {
     const entry = this.pickReusableImpact();
+    const kind: ImpactKind = acid ? "acid" : organic ? "organic" : "hard";
+    entry.style = IMPACT_STYLES[kind];
+    entry.life = entry.style.life;
+    entry.age = 0;
     entry.mesh.position.copyFrom(position);
+    if (towards) entry.mesh.position.addInPlace(towards);
     entry.mesh.material = acid
-      ? this.materials.acid
+      ? this.materials.acidSplash
       : organic
-        ? this.materials.organicImpact
-        : this.materials.hardImpact;
-    entry.mesh.scaling.setAll(acid ? 3.2 : 1);
-    entry.expiresAt = performance.now() + EFFECTS.IMPACT_LIFETIME_MS;
+        ? this.materials.bloodMist
+        : this.materials.spark;
+    entry.mesh.rotation.z = Math.random() * Math.PI * 2;
+    entry.mesh.scaling.setAll(entry.style.startScale);
+    entry.mesh.visibility = entry.style.startVisibility;
     entry.mesh.setEnabled(true);
   }
 
@@ -165,7 +236,8 @@ export class Effects {
       );
 
       if (hit?.hit && hit.pickedPoint) {
-        callbacks.createImpact(hit.pickedPoint, false, true);
+        this.impactOffset.copyFrom(projectile.direction).scaleInPlace(-0.12);
+        callbacks.createImpact(hit.pickedPoint, false, true, this.impactOffset);
         this.disableAcidProjectile(projectile);
       } else if (playerDistance < EFFECTS.ACID_PLAYER_RADIUS) {
         callbacks.createImpact(projectile.nextPosition, false, true);
@@ -187,11 +259,12 @@ export class Effects {
   }
 
   private pickReusableImpact(): ImpactEntry {
-    const inactive = this.impacts.find((impact) => !impact.mesh.isEnabled());
-    if (inactive) return inactive;
-    return this.impacts.reduce((oldest, impact) =>
-      impact.expiresAt < oldest.expiresAt ? impact : oldest
-    );
+    let oldest = this.impacts[0];
+    for (const impact of this.impacts) {
+      if (impact.age >= impact.life) return impact;
+      if (impact.age / impact.life > oldest.age / oldest.life) oldest = impact;
+    }
+    return oldest;
   }
 
   private pickReusableProjectile(): AcidProjectile {

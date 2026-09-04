@@ -11,7 +11,9 @@ export interface FacilityLevel {
   readonly elevatorConsole: Mesh;
   readonly enemySpawns: readonly EnemySpawn[];
   update(delta: number, playerPosition: Vector3): void;
-  setActive(active: boolean): void;
-  setLightBudget(count: number): void;
+  /** Returns true when the number of enabled lights changed. */
+  setActive(active: boolean): boolean;
+  /** Returns true when the number of enabled lights changed. */
+  setLightBudget(count: number): boolean;
   getActiveLightCount(): number;
 }

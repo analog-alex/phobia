@@ -4,11 +4,15 @@ import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
 import { Color3 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import { CreateBox } from "@babylonjs/core/Meshes/Builders/boxBuilder";
+import { CreatePlane } from "@babylonjs/core/Meshes/Builders/planeBuilder";
 import { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
 import { PICKUPS, WEAPON } from "../config/constants";
-import type { MaterialLibrary } from "../core/MaterialLibrary";
+import {
+  type MaterialLibrary,
+  prepareImportedMaterial,
+} from "../core/MaterialLibrary";
 import { smoothStep } from "../utils/math";
 
 const xmbH2SidearmModelUrl = new URL(
@@ -184,6 +188,19 @@ export interface WeaponCallbacks {
   onReloadComplete: () => void;
 }
 
+/** Per-frame player motion the weapon rig reacts to. */
+export interface WeaponMotion {
+  moving: boolean;
+  sprinting: boolean;
+  /** -1 (left) .. 1 (right) */
+  strafe: number;
+  /** 0..1 landing impulse for this frame, 0 when airborne or already down */
+  landing: number;
+}
+
+const wrapAngle = (angle: number): number =>
+  angle - Math.PI * 2 * Math.round(angle / (Math.PI * 2));
+
 export class WeaponSystem {
   private activeKind: WeaponKind = "xmb";
   private muzzleLight?: PointLight;
@@ -193,8 +210,18 @@ export class WeaponSystem {
   private reloading = false;
   private reloadTime = 0;
   private muzzleFlashRemaining = 0;
-  private muzzleFlashOff?: () => void;
+  private muzzleFlash?: Mesh;
   private acquired = false;
+  private bobPhase = 0;
+  private bobAmount = 0;
+  private idleTime = 0;
+  private swayX = 0;
+  private swayY = 0;
+  private roll = 0;
+  private landDip = 0;
+  private lastYaw?: number;
+  private lastPitch?: number;
+  private muzzleIntensity = 0;
   private hands?: { right: TransformNode; left: TransformNode };
   private readonly weapons: Record<WeaponKind, WeaponState> = {
     xmb: {
@@ -233,6 +260,12 @@ export class WeaponSystem {
   getDisplayName(): string {
     return this.profile.displayName;
   }
+  getKickScale(): number {
+    return this.profile.kickScale;
+  }
+  getReloadDuration(): number {
+    return this.profile.reloadDuration;
+  }
   isReloading(): boolean {
     return this.reloading;
   }
@@ -269,9 +302,14 @@ export class WeaponSystem {
       this.profile.muzzleOffset.clone(),
       this.scene
     );
-    this.muzzleLight.diffuse = new Color3(1, 0.42, 0.08);
-    this.muzzleLight.range = 7;
+    this.muzzleLight.diffuse = new Color3(1, 0.55, 0.18);
+    this.muzzleLight.range = 9;
     this.muzzleLight.intensity = 0;
+
+    this.muzzleFlash = CreatePlane("muzzle flash", { size: 1 }, this.scene);
+    this.muzzleFlash.material = this.materials.muzzleFlash;
+    this.muzzleFlash.isPickable = false;
+    this.muzzleFlash.setEnabled(false);
     this.attachMuzzleLight();
   }
 
@@ -330,9 +368,7 @@ export class WeaponSystem {
       this.scene
     );
     container.addAllToScene();
-    container.materials.forEach((material) => {
-      material.freeze();
-    });
+    container.materials.forEach(prepareImportedMaterial);
 
     const source = new TransformNode("droid hand", this.scene);
     container.rootNodes.forEach((node) => {
@@ -453,9 +489,7 @@ export class WeaponSystem {
       this.scene
     );
     container.addAllToScene();
-    container.materials.forEach((material) => {
-      material.freeze();
-    });
+    container.materials.forEach(prepareImportedMaterial);
 
     const root = new TransformNode(profile.displayName, this.scene);
     root.parent = camera;
@@ -489,7 +523,7 @@ export class WeaponSystem {
     return root;
   }
 
-  update(delta: number, moving: boolean): void {
+  update(delta: number, motion: WeaponMotion): void {
     if (!this.acquired) {
       this.updatePickupSpin(delta);
       return;
@@ -497,19 +531,57 @@ export class WeaponSystem {
     const root = this.active.root;
     if (!root) return;
     this.weaponKick = Math.max(0, this.weaponKick - delta * WEAPON.KICK_DECAY);
-    if (this.muzzleFlashRemaining > 0) {
-      this.muzzleFlashRemaining = Math.max(
-        0,
-        this.muzzleFlashRemaining - delta
-      );
-      if (this.muzzleFlashRemaining === 0 && this.muzzleLight) {
-        this.muzzleLight.intensity = 0;
-        this.muzzleFlashOff?.();
-        this.muzzleFlashOff = undefined;
+    this.updateMuzzleFlash(delta);
+
+    // Figure-eight bob that eases in and out instead of snapping, driven by
+    // accumulated phase so pausing freezes it.
+    const bobTarget = motion.moving ? (motion.sprinting ? 1.55 : 1) : 0;
+    this.bobAmount += (bobTarget - this.bobAmount) * Math.min(1, delta * 7);
+    if (motion.moving)
+      this.bobPhase +=
+        delta * (motion.sprinting ? WEAPON.BOB_RATE_SPRINT : WEAPON.BOB_RATE);
+    this.idleTime += delta;
+    const bobX =
+      Math.sin(this.bobPhase) * WEAPON.BOB_AMPLITUDE * 0.85 * this.bobAmount;
+    const bobY =
+      Math.sin(this.bobPhase * 2) * WEAPON.BOB_AMPLITUDE * this.bobAmount;
+    const breatheX = Math.sin(this.idleTime * 1.1) * 0.0016;
+    const breatheY = Math.sin(this.idleTime * 1.7) * 0.0024;
+
+    // Look sway: the rig trails the camera by a hair when turning.
+    if (this.camera) {
+      const yaw = this.camera.rotation.y;
+      const pitch = this.camera.rotation.x;
+      let targetX = 0;
+      let targetY = 0;
+      if (
+        this.lastYaw !== undefined &&
+        this.lastPitch !== undefined &&
+        delta > 0
+      ) {
+        const yawRate = wrapAngle(yaw - this.lastYaw) / delta;
+        const pitchRate = (pitch - this.lastPitch) / delta;
+        targetX = Math.max(
+          -WEAPON.SWAY_MAX,
+          Math.min(WEAPON.SWAY_MAX, -yawRate * WEAPON.SWAY_SCALE)
+        );
+        targetY = Math.max(
+          -WEAPON.SWAY_MAX,
+          Math.min(WEAPON.SWAY_MAX, pitchRate * WEAPON.SWAY_SCALE)
+        );
       }
+      this.lastYaw = yaw;
+      this.lastPitch = pitch;
+      const spring = Math.min(1, delta * 11);
+      this.swayX += (targetX - this.swayX) * spring;
+      this.swayY += (targetY - this.swayY) * spring;
     }
-    const time = performance.now() * 0.008;
-    const bob = moving ? Math.sin(time) * WEAPON.BOB_AMPLITUDE : 0;
+
+    // Strafe roll and landing dip.
+    this.roll += (-motion.strafe * 0.03 - this.roll) * Math.min(1, delta * 8);
+    this.landDip = Math.min(1, this.landDip + motion.landing);
+    this.landDip = Math.max(0, this.landDip - delta * 4.2);
+
     const profile = this.profile;
     let reloadPose = 0;
     let magazineSnap = 0;
@@ -528,22 +600,61 @@ export class WeaponSystem {
       if (this.reloadTime >= profile.reloadDuration) this.finishReload();
     }
 
-    root.position.x = profile.basePose.position.x + reloadPose * 0.16;
+    const kick = this.weaponKick * profile.kickScale;
+    root.position.x =
+      profile.basePose.position.x +
+      bobX +
+      breatheX +
+      this.swayX +
+      this.roll * 0.3 +
+      reloadPose * 0.16;
     root.position.y =
       profile.basePose.position.y +
-      bob -
-      this.weaponKick * 0.08 * profile.kickScale -
+      bobY +
+      breatheY +
+      this.swayY * 0.7 -
+      kick * 0.08 -
+      this.landDip * 0.06 -
       reloadPose * WEAPON.RELOAD_DIP -
       magazineSnap * 0.055;
-    root.position.z = profile.basePose.position.z - reloadPose * 0.08;
+    root.position.z =
+      profile.basePose.position.z - kick * 0.05 - reloadPose * 0.08;
     root.rotation.x =
       profile.basePose.rotation.x +
-      this.weaponKick * 0.24 * profile.kickScale +
+      kick * 0.24 -
+      this.swayY * 1.4 +
+      this.landDip * 0.07 +
       reloadPose * 0.46 -
       magazineSnap * 0.12;
-    root.rotation.y = profile.basePose.rotation.y - reloadPose * 0.34;
+    root.rotation.y =
+      profile.basePose.rotation.y + this.swayX * 1.3 - reloadPose * 0.34;
     root.rotation.z =
-      profile.basePose.rotation.z + reloadPose * 0.52 + magazineSnap * 0.09;
+      profile.basePose.rotation.z +
+      this.roll +
+      bobX * 0.6 +
+      kick * 0.02 +
+      reloadPose * 0.52 +
+      magazineSnap * 0.09;
+  }
+
+  private updateMuzzleFlash(delta: number): void {
+    if (this.muzzleFlashRemaining <= 0) return;
+    this.muzzleFlashRemaining = Math.max(0, this.muzzleFlashRemaining - delta);
+    const life = this.muzzleFlashRemaining / (WEAPON.MUZZLE_FLASH_MS / 1000);
+    if (this.muzzleLight)
+      this.muzzleLight.intensity = this.muzzleIntensity * (0.35 + 0.65 * life);
+    if (this.muzzleFlash) {
+      const scale =
+        WEAPON.MUZZLE_FLASH_SIZE *
+        this.profile.kickScale *
+        (0.55 + 0.45 * life);
+      this.muzzleFlash.scaling.set(scale, scale, scale);
+      this.muzzleFlash.visibility = 0.4 + 0.6 * life;
+    }
+    if (this.muzzleFlashRemaining === 0) {
+      if (this.muzzleLight) this.muzzleLight.intensity = 0;
+      this.muzzleFlash?.setEnabled(false);
+    }
   }
 
   kick(): void {
@@ -590,21 +701,29 @@ export class WeaponSystem {
     this.active.reserve = reserve;
   }
 
-  triggerMuzzle(
-    on: () => void,
-    off: () => void,
-    durationMs = WEAPON.MUZZLE_FLASH_MS
-  ): void {
-    if (!this.muzzleLight) return;
-    on();
-    this.muzzleFlashOff = off;
-    this.muzzleFlashRemaining = durationMs / 1000;
+  /** Lights the muzzle flash for `WEAPON.MUZZLE_FLASH_MS`; frame-driven. */
+  triggerMuzzle(intensity: number): void {
+    this.muzzleIntensity = intensity;
+    this.muzzleFlashRemaining = WEAPON.MUZZLE_FLASH_MS / 1000;
+    if (this.muzzleLight) this.muzzleLight.intensity = intensity;
+    if (this.muzzleFlash) {
+      this.muzzleFlash.rotation.z = Math.random() * Math.PI * 2;
+      this.muzzleFlash.setEnabled(true);
+    }
   }
 
   private attachMuzzleLight(): void {
-    if (!this.muzzleLight || !this.active.root) return;
-    this.muzzleLight.parent = this.active.root;
-    this.muzzleLight.position.copyFrom(this.profile.muzzleOffset);
+    const root = this.active.root;
+    if (!root) return;
+    if (this.muzzleLight) {
+      this.muzzleLight.parent = root;
+      this.muzzleLight.position.copyFrom(this.profile.muzzleOffset);
+    }
+    if (this.muzzleFlash) {
+      this.muzzleFlash.parent = root;
+      this.muzzleFlash.position.copyFrom(this.profile.muzzleOffset);
+      this.muzzleFlash.position.z += 0.06;
+    }
   }
 
   private get active(): WeaponState {

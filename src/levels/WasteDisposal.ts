@@ -43,12 +43,15 @@ export class WasteDisposal implements FacilityLevel {
     private readonly materials: MaterialLibrary
   ) {
     const firstMesh = scene.meshes.length;
-    this.lighting = new FacilityLighting(scene);
+    this.lighting = new FacilityLighting(scene, (emitter) =>
+      this.batch("fixture", emitter.size, emitter.position, emitter.material)
+    );
     this.createShell();
     this.createWasteLine();
     this.createSecurityStation();
     this.elevatorConsole = this.createElevator();
     this.createLights();
+    this.lighting.build();
     this.batcher.flush(scene);
     this.xmbPickup = this.box(
       "XMB H2 pickup",
@@ -118,16 +121,16 @@ export class WasteDisposal implements FacilityLevel {
     this.elevatorDoors(delta, doorsOpen);
   }
 
-  setLightBudget(count: number): void {
+  setLightBudget(count: number): boolean {
     this.lightBudget = count;
-    this.lighting.setBudget(this.active ? count : 0);
+    return this.lighting.setBudget(this.active ? count : 0);
   }
 
-  setActive(active: boolean): void {
-    if (active === this.active) return;
+  setActive(active: boolean): boolean {
+    if (active === this.active) return false;
     this.active = active;
     for (const mesh of this.levelMeshes) mesh.setEnabled(active);
-    this.lighting.setBudget(active ? this.lightBudget : 0);
+    return this.lighting.setBudget(active ? this.lightBudget : 0);
   }
 
   getActiveLightCount(): number {
@@ -146,7 +149,7 @@ export class WasteDisposal implements FacilityLevel {
       "shell",
       new Vector3(18, 0.3, 76),
       new Vector3(0, 4.55, -82),
-      this.materials.dark,
+      this.materials.ceiling,
       true
     );
     this.batch(
@@ -191,6 +194,22 @@ export class WasteDisposal implements FacilityLevel {
         this.materials.steel
       );
     }
+    // Low guide strips along the walls so the disposal bay reads as a route
+    // rather than a black box.
+    for (const x of [-8.76, 8.76]) {
+      this.batch(
+        "guide strip",
+        new Vector3(0.04, 0.035, 75),
+        new Vector3(x, 0.3, -82),
+        this.materials.green
+      );
+      this.batch(
+        "skirting",
+        new Vector3(0.1, 0.26, 76),
+        new Vector3(x < 0 ? -8.8 : 8.8, 0.13, -82),
+        this.materials.steel
+      );
+    }
   }
 
   private createWasteLine(): void {
@@ -219,7 +238,7 @@ export class WasteDisposal implements FacilityLevel {
       "sewage channel",
       new Vector3(4.8, 0.05, 38),
       new Vector3(0, 0.025, -77),
-      this.materials.green
+      this.materials.sewage
     );
     this.batch(
       "channel rail",
@@ -249,7 +268,7 @@ export class WasteDisposal implements FacilityLevel {
       "dead screen",
       new Vector3(1.4, 0.9, 0.16),
       new Vector3(-5.1, 1.55, -101.8),
-      this.materials.red
+      this.materials.deadScreen
     );
     this.batch(
       "blood",
@@ -301,27 +320,48 @@ export class WasteDisposal implements FacilityLevel {
   }
 
   private createLights(): void {
+    let index = 0;
     for (let z = -114; z <= -50; z += 8) {
+      // Work lights alternate sides; the third and seventh are failing.
+      const x = index % 2 === 0 ? -5 : 5;
+      const failing = index === 2 || index === 6;
+      index += 1;
       this.batch(
-        "work light",
-        new Vector3(2.6, 0.08, 0.46),
-        new Vector3(z % 16 === 0 ? -5 : 5, 4.32, z),
-        this.materials.lamp
+        "work light housing",
+        new Vector3(2.9, 0.1, 0.7),
+        new Vector3(x, 4.4, z),
+        this.materials.dark
       );
       this.lighting.add(
-        new Vector3(z % 16 === 0 ? -5 : 5, 3.8, z),
-        new Color3(0.22, 0.72, 0.5),
-        0.9,
-        10,
-        z % 24 === 0
+        new Vector3(x, 3.2, z),
+        new Color3(0.3, 0.8, 0.58),
+        5.2,
+        11,
+        failing,
+        {
+          size: new Vector3(2.6, 0.08, 0.46),
+          position: new Vector3(x, 4.32, z),
+          material: this.materials.lamp,
+        }
       );
     }
+    this.batch(
+      "alarm housing",
+      new Vector3(0.7, 0.1, 0.7),
+      new Vector3(0, 4.38, -75),
+      this.materials.dark
+    );
     this.lighting.add(
-      new Vector3(0, 3.7, -75),
-      new Color3(1, 0.04, 0.01),
-      0.55,
-      11,
-      true
+      new Vector3(0, 3.3, -75),
+      new Color3(1, 0.05, 0.02),
+      2.8,
+      12,
+      true,
+      {
+        size: new Vector3(0.46, 0.12, 0.46),
+        position: new Vector3(0, 4.28, -75),
+        material: this.materials.red,
+      }
     );
   }
 

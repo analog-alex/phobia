@@ -5,7 +5,9 @@ import type { AssetContainer } from "@babylonjs/core/assetContainer";
 import { Engine } from "@babylonjs/core/Engines/engine";
 import { HemisphericLight } from "@babylonjs/core/Lights/hemisphericLight";
 import { SceneLoader } from "@babylonjs/core/Loading/sceneLoader";
-import { Color3 } from "@babylonjs/core/Maths/math.color";
+import { ColorCurves } from "@babylonjs/core/Materials/colorCurves";
+import { ImageProcessingConfiguration } from "@babylonjs/core/Materials/imageProcessingConfiguration";
+import { Color3, Color4 } from "@babylonjs/core/Maths/math.color";
 import { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { Mesh } from "@babylonjs/core/Meshes/mesh";
 import { BloomEffect } from "@babylonjs/core/PostProcesses/bloomEffect";
@@ -15,11 +17,19 @@ import { PostProcessRenderEffect } from "@babylonjs/core/PostProcesses/RenderPip
 import { PostProcessRenderPipeline } from "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipeline";
 import "@babylonjs/core/PostProcesses/RenderPipeline/postProcessRenderPipelineManagerSceneComponent";
 import { Scene } from "@babylonjs/core/scene";
-import { COMBAT, LEVEL, PLAYER, WEAPON } from "../config/constants";
+import {
+  CAMERA_FEEL,
+  COMBAT,
+  GRAPHICS,
+  LEVEL,
+  PLAYER,
+  WEAPON,
+} from "../config/constants";
 import { Sector7 } from "../levels/Sector7";
 import { WasteDisposal } from "../levels/WasteDisposal";
 import { AudioSystem } from "../systems/AudioSystem";
 import { Effects } from "../systems/Effects";
+import { createFacilityEnvironment } from "../systems/Environment";
 import {
   QualityManager,
   type QualityPreset,
@@ -30,12 +40,13 @@ import { isEnemyMetadata } from "../types";
 import { Diagnostics } from "../ui/Diagnostics";
 import { HUD } from "../ui/HUD";
 import { horizontalDistanceSquared } from "../utils/math";
+import { CameraFeel } from "./CameraFeel";
 import { Enemy } from "./Enemy";
-import { MaterialLibrary } from "./MaterialLibrary";
+import { MaterialLibrary, prepareImportedMaterial } from "./MaterialLibrary";
 import { getPickupReward } from "./PickupLogic";
 import { PlayerController } from "./PlayerController";
 import { RunProgression } from "./RunProgression";
-import type { WeaponKind } from "./WeaponSystem";
+import type { WeaponKind, WeaponMotion } from "./WeaponSystem";
 import { WeaponSystem } from "./WeaponSystem";
 
 const zombieModelUrl = new URL(
@@ -59,12 +70,20 @@ export class Game {
   private readonly enemies: Enemy[] = [];
   private readonly sectorEnemies: Enemy[] = [];
   private readonly pipeline: PostProcessRenderPipeline;
+  private ambient?: HemisphericLight;
   private readonly bloom: BloomEffect;
   private readonly fxaa: FxaaPostProcess;
   private readonly chromaticAberration: ChromaticAberrationPostProcess;
   private readonly diagnostics: Diagnostics;
   private readonly player: PlayerController;
+  private readonly cameraFeel: CameraFeel;
   private readonly effects: Effects;
+  private readonly motion: WeaponMotion = {
+    moving: false,
+    sprinting: false,
+    strafe: 0,
+    landing: 0,
+  };
   private readonly weaponSys: WeaponSystem;
   private readonly progression = new RunProgression();
   private readonly onEnemyDamage = (damage: number): void =>
@@ -73,10 +92,15 @@ export class Game {
   private readonly onAcidThrow = (origin: Vector3): void =>
     this.effects.throwAcid(origin, this.camera.position, this.onAcidSound);
   private readonly acidCallbacks = {
-    createImpact: (position: Vector3, organic: boolean, acid = false) =>
-      this.effects.createImpact(position, organic, acid),
+    createImpact: (
+      position: Vector3,
+      organic: boolean,
+      acid = false,
+      towards?: Vector3
+    ) => this.effects.createImpact(position, organic, acid, towards),
     takeDamage: (damage: number) => this.takeDamage(damage),
   };
+  private readonly impactOffset = new Vector3();
 
   private level?: Sector7;
   private wasteLevel?: WasteDisposal;
@@ -106,7 +130,12 @@ export class Game {
       this.engine,
       "performance-pipeline"
     );
-    this.bloom = new BloomEffect(this.scene, 0.5, 0.18, 42);
+    this.bloom = new BloomEffect(
+      this.scene,
+      GRAPHICS.BLOOM_SCALE,
+      GRAPHICS.BLOOM_WEIGHT,
+      GRAPHICS.BLOOM_KERNEL
+    );
     this.fxaa = new FxaaPostProcess("fxaa", 1, null, undefined, this.engine);
     this.chromaticAberration = new ChromaticAberrationPostProcess(
       "chromatic",
@@ -141,9 +170,12 @@ export class Game {
       () => this.isGameplayActive()
     );
     this.camera = this.player.camera;
+    this.cameraFeel = new CameraFeel(this.camera);
     this.weaponSys = new WeaponSystem(this.scene, this.materials, {
-      onReloadComplete: () =>
-        this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve()),
+      onReloadComplete: () => {
+        this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
+        this.hud.finishReload();
+      },
     });
     this.diagnostics = new Diagnostics(
       this.engine,
@@ -219,19 +251,52 @@ export class Game {
   }
 
   private configureLightingAndPostProcessing(): void {
+    this.scene.clearColor = new Color4(0.012, 0.035, 0.038, 1);
+    this.scene.fogMode = Scene.FOGMODE_EXP2;
+    this.scene.fogDensity = GRAPHICS.FOG_DENSITY;
+    this.scene.fogColor = new Color3(0.02, 0.07, 0.075);
+    this.scene.collisionsEnabled = true;
+
+    // Image-based lighting gives the PBR metals something to reflect; without
+    // it every steel and gunmetal surface renders as flat black plastic.
+    try {
+      this.scene.environmentTexture = createFacilityEnvironment(this.scene);
+      this.scene.environmentIntensity = GRAPHICS.ENVIRONMENT_INTENSITY;
+    } catch (error) {
+      console.warn("Could not build facility environment lighting", error);
+    }
+
     const ambient = new HemisphericLight(
       "ambient spill",
       new Vector3(0, 1, 0),
       this.scene
     );
-    ambient.diffuse = new Color3(0.3, 0.5, 0.48);
-    ambient.groundColor = new Color3(0.045, 0.075, 0.08);
-    ambient.intensity = 0.48;
+    ambient.diffuse = new Color3(0.36, 0.52, 0.5);
+    ambient.groundColor = new Color3(0.1, 0.14, 0.15);
+    ambient.specular = Color3.Black();
+    ambient.intensity =
+      GRAPHICS.AMBIENT_INTENSITY * GRAPHICS.AMBIENT_WASTE_SCALE;
+    this.ambient = ambient;
 
-    this.scene.imageProcessingConfiguration.contrast = 1.18;
-    this.scene.imageProcessingConfiguration.exposure = 1.08;
-    this.bloom.threshold = 0.72;
-    this.chromaticAberration.aberrationAmount = 5;
+    const imageProcessing = this.scene.imageProcessingConfiguration;
+    imageProcessing.toneMappingEnabled = true;
+    imageProcessing.toneMappingType =
+      ImageProcessingConfiguration.TONEMAPPING_ACES;
+    imageProcessing.exposure = GRAPHICS.EXPOSURE;
+    imageProcessing.contrast = GRAPHICS.CONTRAST;
+    // Clinical grade: cool teal shadows, slightly drained highlights.
+    const curves = new ColorCurves();
+    curves.shadowsHue = 188;
+    curves.shadowsDensity = 22;
+    curves.shadowsSaturation = 14;
+    curves.midtonesSaturation = -6;
+    curves.highlightsSaturation = -18;
+    curves.highlightsExposure = -4;
+    imageProcessing.colorCurves = curves;
+    imageProcessing.colorCurvesEnabled = true;
+
+    this.bloom.threshold = GRAPHICS.BLOOM_THRESHOLD;
+    this.chromaticAberration.aberrationAmount = GRAPHICS.CHROMATIC_AMOUNT;
     this.pipeline.addEffect(this.bloom);
     this.pipeline.addEffect(
       new PostProcessRenderEffect(this.engine, "fxaa", () => this.fxaa)
@@ -262,9 +327,7 @@ export class Game {
         modelUrl,
         this.scene
       );
-      container.materials.forEach((material) => {
-        material.freeze();
-      });
+      container.materials.forEach(prepareImportedMaterial);
       return container;
     } catch (error) {
       console.warn(`Could not load ${label} model; using fallback`, error);
@@ -354,16 +417,22 @@ export class Game {
     if (!active || !this.level) return;
     this.hud.update(delta);
     this.audio.update(delta);
-    this.effects.updateImpactPool();
+    this.effects.updateImpactPool(delta);
     this.player.syncCameraHeight();
 
+    const strafe =
+      Number(this.keys.has("KeyD")) - Number(this.keys.has("KeyA"));
     const moving =
-      this.keys.has("KeyW") ||
-      this.keys.has("KeyA") ||
-      this.keys.has("KeyS") ||
-      this.keys.has("KeyD");
+      strafe !== 0 || this.keys.has("KeyW") || this.keys.has("KeyS");
+    this.motion.moving = moving;
+    this.motion.sprinting =
+      moving && (this.keys.has("ShiftLeft") || this.keys.has("ShiftRight"));
+    this.motion.strafe = strafe;
+    this.motion.landing = this.player.consumeLanding();
+    this.hud.setMovement(moving, this.motion.sprinting);
+    this.cameraFeel.update(delta, this.motion.sprinting);
     this.activeLevel?.update(delta, this.camera.position);
-    this.weaponSys.update(delta, moving);
+    this.weaponSys.update(delta, this.motion);
     this.updateEnemies(delta);
     if (this.progression.phase === "sector7")
       this.effects.updateAcidProjectiles(
@@ -507,21 +576,14 @@ export class Game {
     if (!this.weaponSys.tryFire()) return;
     this.hud.setAmmo(this.weaponSys.getClip(), this.weaponSys.getReserve());
     this.hud.kickCrosshair();
+    this.cameraFeel.kick(
+      CAMERA_FEEL.RECOIL_PITCH * this.weaponSys.getKickScale()
+    );
     this.audio.shoot();
 
-    const muzzle = this.weaponSys.getMuzzleLight();
-    if (muzzle) {
-      this.activeLevel?.setLightBudget(
-        Math.max(1, this.currentSettings.dynamicLights - 1)
-      );
-      this.weaponSys.triggerMuzzle(
-        () => (muzzle.intensity = WEAPON.MUZZLE_FLASH_INTENSITY),
-        () => {
-          if (muzzle) muzzle.intensity = 0;
-          this.activeLevel?.setLightBudget(this.currentSettings.dynamicLights);
-        }
-      );
-    }
+    // The muzzle light stays enabled at zero intensity between shots so the
+    // frozen materials' light count never changes; only its intensity moves.
+    this.weaponSys.triggerMuzzle(WEAPON.MUZZLE_FLASH_INTENSITY);
 
     const ray = this.camera.getForwardRay(this.weaponSys.getRange());
     const hit = this.scene.pickWithRay(
@@ -532,15 +594,28 @@ export class Game {
 
     const meta = hit.pickedMesh.metadata;
     const enemy = isEnemyMetadata(meta) ? meta.enemy : undefined;
+    this.impactOffset.copyFrom(ray.direction).scaleInPlace(-0.1);
     if (!enemy || enemy.isDead) {
-      if (hit.pickedPoint) this.effects.createImpact(hit.pickedPoint, false);
+      if (hit.pickedPoint)
+        this.effects.createImpact(
+          hit.pickedPoint,
+          false,
+          false,
+          this.impactOffset
+        );
       return;
     }
 
     const killed = enemy.damage(this.weaponSys.getDamage());
-    this.hud.showHit();
+    this.hud.showHit(killed);
     this.audio.hit();
-    if (hit.pickedPoint) this.effects.createImpact(hit.pickedPoint, true);
+    if (hit.pickedPoint)
+      this.effects.createImpact(
+        hit.pickedPoint,
+        true,
+        false,
+        this.impactOffset
+      );
     if (killed) {
       this.kills += 1;
       this.hud.flashMessage(
@@ -555,6 +630,7 @@ export class Game {
     if (!this.progression.allowsWeaponAction) return;
     if (this.weaponSys.tryReload()) {
       this.hud.flashMessage("Reloading", 800);
+      this.hud.startReload(this.weaponSys.getReloadDuration());
       this.audio.reload();
     }
   }
@@ -578,8 +654,11 @@ export class Game {
         this.hud.setPrompt("");
         this.hud.flashMessage("LEVEL 07 // INITIAL BREACH", 2400);
         this.hud.setObjective("Reach the extraction lift");
-        this.wasteLevel.setActive(false);
-        this.level.setActive(true);
+        const wasteChanged = this.wasteLevel.setActive(false);
+        const sectorChanged = this.level.setActive(true);
+        if (wasteChanged || sectorChanged) this.refreshMaterialLighting();
+        // The research sector is the clean, well-lit half of the facility.
+        if (this.ambient) this.ambient.intensity = GRAPHICS.AMBIENT_INTENSITY;
         for (const enemy of this.sectorEnemies) enemy.root.setEnabled(true);
       }
       return;
@@ -600,6 +679,7 @@ export class Game {
     this.health = Math.max(0, this.health - amount);
     this.hud.setHealth(this.health);
     this.hud.flashDamage();
+    this.cameraFeel.hurt(Math.min(1, amount / 20));
     this.audio.enemyAttack();
     if (this.health === 0) this.finish(false);
   }
@@ -640,6 +720,7 @@ export class Game {
     this.setGameplayCursorHidden(false);
     this.camera.detachControl();
     if (document.pointerLockElement === this.canvas) document.exitPointerLock();
+    this.hud.setCrosshairVisible(false);
     document.getElementById("pause-screen")?.classList.add("visible");
   }
 
@@ -647,6 +728,7 @@ export class Game {
     if (!this.started || !this.paused || this.ended) return;
     this.paused = false;
     this.setGameplayCursorHidden(true);
+    this.hud.setCrosshairVisible(true);
     document.getElementById("pause-screen")?.classList.remove("visible");
     this.camera.attachControl(this.canvas, true);
     void this.audio.resume();
@@ -701,9 +783,22 @@ export class Game {
         ? "enableEffectInPipeline"
         : "disableEffectInPipeline"
     ](this.pipeline.name, "chromatic", this.camera);
-    this.level?.setLightBudget(settings.dynamicLights);
-    this.wasteLevel?.setLightBudget(settings.dynamicLights);
+    const sectorChanged = this.level?.setLightBudget(settings.dynamicLights);
+    const wasteChanged = this.wasteLevel?.setLightBudget(
+      settings.dynamicLights
+    );
+    if (sectorChanged || wasteChanged) this.refreshMaterialLighting();
     this.updateQualityButtons();
+  }
+
+  /**
+   * Frozen materials bake the enabled light count into their shaders and
+   * never re-check it, so whenever the facility light budget or the active
+   * level changes they are told to rebuild once. Babylon caches compiled
+   * variants, so switching back to a previous count is cheap.
+   */
+  private refreshMaterialLighting(): void {
+    for (const material of this.scene.materials) material.markDirty(true);
   }
 
   private get activeLevel(): Sector7 | WasteDisposal | undefined {

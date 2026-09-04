@@ -18,6 +18,8 @@ export class PlayerController {
   private groundCheckTimer = 0;
   private jumpBufferTimer = 0;
   private movementInputAttached = false;
+  private airborne = false;
+  private landingImpulse = 0;
 
   readonly camera: UniversalCamera;
 
@@ -142,7 +144,11 @@ export class PlayerController {
     } else {
       this.verticalVelocity -= PHYSICS.GRAVITY * delta;
       this.verticalOffset += this.verticalVelocity * delta;
+      if (this.verticalOffset > 0.02) this.airborne = true;
       if (this.verticalVelocity <= 0 && this.verticalOffset <= 0) {
+        if (this.airborne)
+          this.landingImpulse = Math.min(1, -this.verticalVelocity / 9);
+        this.airborne = false;
         this.verticalOffset = 0;
         this.verticalVelocity = PHYSICS.GROUNDED_VERTICAL_CLAMP;
         this.grounded = true;
@@ -154,6 +160,13 @@ export class PlayerController {
 
   get isGrounded(): boolean {
     return this.grounded;
+  }
+
+  /** Returns the 0..1 landing impulse for a touchdown this frame, then clears it. */
+  consumeLanding(): number {
+    const impulse = this.landingImpulse;
+    this.landingImpulse = 0;
+    return impulse;
   }
 
   /** For potential external reset (e.g. future spawn) */
