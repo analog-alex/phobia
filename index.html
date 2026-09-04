@@ -9,9 +9,11 @@
   <body>
     <canvas id="game"></canvas>
     <div id="vignette"></div>
+    <div id="grain"></div>
+    <div id="low-health"></div>
     <div id="damage-flash"></div>
 
-    <main id="start-screen" class="screen visible">
+    <main id="start-screen" class="screen start-screen visible">
       <section class="panel start-panel">
         <div class="eyebrow">AETHER LABS // INCIDENT 07</div>
         <h1>PHOBIA</h1>
@@ -71,13 +73,14 @@
 
     <section id="hud" class="hidden" aria-label="Heads-up display">
       <div id="objective"><span>OBJECTIVE</span><b>Reach the extraction lift</b></div>
-      <div id="hitmarker">×</div>
+      <div id="hitmarker"><span></span><span></span><span></span><span></span></div>
       <div class="hud-block health-block">
         <span>VITALS</span><strong id="health">100</strong><small>HP</small>
         <div class="meter"><i id="health-bar"></i></div>
       </div>
       <div class="hud-block ammo-block">
-        <span id="weapon-name">VX-9 SIDEARM</span><strong id="ammo">12</strong><small id="reserve">/ 48</small>
+        <span id="weapon-name">UNARMED</span><strong id="ammo">00</strong><small id="reserve">/ 00</small>
+        <div class="meter reload-meter"><i id="reload-bar"></i></div>
       </div>
       <div id="prompt"></div>
       <div id="message"></div>

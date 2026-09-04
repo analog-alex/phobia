@@ -35,6 +35,8 @@ export class Enemy {
   private readonly modelAnimations = new Map<string, AnimationGroup>();
   private activeModelAnimation?: AnimationGroup;
   private attacking = false;
+  /** 1 right after a hit, decaying to 0: drives a brief flinch squash. */
+  private hitPunch = 0;
 
   constructor(
     scene: Scene,
@@ -369,6 +371,11 @@ export class Enemy {
 
     this.attackCooldown = Math.max(0, this.attackCooldown - delta);
     this.attackAnimation = Math.max(0, this.attackAnimation - delta * 3.4);
+    if (this.hitPunch > 0) {
+      this.hitPunch = Math.max(0, this.hitPunch - delta * 8.5);
+      const punch = Math.sin(this.hitPunch * Math.PI) * 0.09;
+      this.visualRoot.scaling.set(1 + punch * 0.6, 1 - punch, 1 + punch * 0.6);
+    }
     this.animationTime += delta * (this.variant === "runner" ? 11.5 : 6.5);
     this.decisionTimer -= delta;
     if (this.decisionTimer <= 0) {
@@ -437,8 +444,10 @@ export class Enemy {
   damage(amount: number): boolean {
     if (this.dead) return false;
     this.health -= amount;
+    this.hitPunch = 1;
     if (this.health <= 0) {
       this.dead = true;
+      this.visualRoot.scaling.setAll(1);
       this.playDeathAnimation();
       this.root.getChildMeshes().forEach((mesh) => {
         mesh.metadata = { corpse: true };

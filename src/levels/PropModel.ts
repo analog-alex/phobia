@@ -3,6 +3,7 @@ import type { Vector3 } from "@babylonjs/core/Maths/math.vector";
 import type { AbstractMesh } from "@babylonjs/core/Meshes/abstractMesh";
 import { TransformNode } from "@babylonjs/core/Meshes/transformNode";
 import type { Scene } from "@babylonjs/core/scene";
+import { prepareImportedMaterial } from "../core/MaterialLibrary";
 
 export interface PropPlacement {
   name: string;
@@ -31,9 +32,7 @@ export class PropModel {
         modelUrl,
         scene
       );
-      container.materials.forEach((material) => {
-        material.freeze();
-      });
+      container.materials.forEach(prepareImportedMaterial);
       return new PropModel(scene, container);
     } catch (error) {
       console.warn(`Could not load ${label} model`, error);

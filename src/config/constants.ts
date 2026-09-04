@@ -47,12 +47,20 @@ export const PHYSICS = {
 export const WEAPON = {
   /** Weapon bob amplitude */
   BOB_AMPLITUDE: 0.012,
+  /** Bob phase rate while walking / sprinting (rad/s) */
+  BOB_RATE: 9.4,
+  BOB_RATE_SPRINT: 12.6,
+  /** Look-sway offset per rad/s of camera turn, and its clamp */
+  SWAY_SCALE: 0.009,
+  SWAY_MAX: 0.045,
   /** Weapon kick decay rate */
   KICK_DECAY: 5.4,
   /** Muzzle flash duration (ms) */
-  MUZZLE_FLASH_MS: 42,
+  MUZZLE_FLASH_MS: 55,
   /** Muzzle flash intensity */
-  MUZZLE_FLASH_INTENSITY: 4,
+  MUZZLE_FLASH_INTENSITY: 7,
+  /** Muzzle flash sprite size in view space */
+  MUZZLE_FLASH_SIZE: 0.26,
   /** Kick crosshair timeout (ms) */
   KICK_CROSSHAIR_MS: 85,
   /**
@@ -242,12 +250,45 @@ export const TIMINGS = {
 } as const;
 
 export const GRAPHICS = {
-  /** Default render scale (medium) */
-  DEFAULT_RENDER_SCALE: 0.8,
-  /** Bloom threshold */
-  BLOOM_THRESHOLD: 0.72,
+  /** Bloom threshold (display space, after tone mapping) */
+  BLOOM_THRESHOLD: 0.74,
+  /** Bloom weight added back onto the frame */
+  BLOOM_WEIGHT: 0.34,
+  /** Bloom blur kernel */
+  BLOOM_KERNEL: 56,
+  /** Bloom render target scale */
+  BLOOM_SCALE: 0.5,
   /** Chromatic aberration amount */
   CHROMATIC_AMOUNT: 5,
+  /** Image processing exposure (ACES tone mapping) */
+  EXPOSURE: 1.28,
+  /** Image processing contrast */
+  CONTRAST: 1.1,
+  /** Scene-wide environment (IBL) intensity */
+  ENVIRONMENT_INTENSITY: 0.75,
+  /** Hemispheric fill intensity; kept low because IBL supplies most fill */
+  AMBIENT_INTENSITY: 0.4,
+  /** Waste Disposal runs dimmer than the research sector */
+  AMBIENT_WASTE_SCALE: 0.75,
+  /** Exponential-squared fog density */
+  FOG_DENSITY: 0.0082,
+} as const;
+
+export const CAMERA_FEEL = {
+  /** Extra FOV while sprinting (radians added to PLAYER.FOV) */
+  SPRINT_FOV_BOOST: 0.075,
+  /** FOV interpolation rate (per second) */
+  FOV_LERP_RATE: 6,
+  /** Camera pitch kick per shot (radians), scaled by the weapon kick scale */
+  RECOIL_PITCH: 0.012,
+  /** Recoil recovery rate (per second) */
+  RECOIL_RECOVERY: 9,
+  /** Camera roll shake amplitude when taking damage (radians) */
+  DAMAGE_ROLL: 0.035,
+  /** Damage shake decay rate (per second) */
+  DAMAGE_SHAKE_DECAY: 5,
+  /** Damage shake oscillation frequency (rad/s) */
+  DAMAGE_SHAKE_FREQ: 34,
 } as const;
 
 /** Quality light budgets etc are in QualityManager. */
